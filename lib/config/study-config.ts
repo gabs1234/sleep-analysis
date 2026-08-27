@@ -1,6 +1,6 @@
 import { ExperimentConfig } from "@/types/experiment";
-import defaultStudyJson from "@/config/default-study.json";
-import screenCutoffStudyJson from "@/config/screen-cutoff-study.json";
+import defaultStudyJson from "../../config/default-study.json";
+import screenCutoffStudyJson from "../../config/screen-cutoff-study.json";
 
 export const DEFAULT_STUDY_CONFIG = defaultStudyJson as unknown as ExperimentConfig;
 export const SCREEN_CUTOFF_STUDY_CONFIG = screenCutoffStudyJson as unknown as ExperimentConfig;

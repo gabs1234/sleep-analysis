@@ -60,6 +60,7 @@ interface StudyContextType {
   ) => Promise<void>;
   updateNightRecord: (date: string, updates: Partial<NightRecord>) => void;
   deleteNightRecord: (date: string) => void;
+  syncWearableForDate: (date: string) => Promise<boolean>;
   logEveningAction: (actionId: string, actionLabel: string) => void;
   acknowledgeEveningProtocol: () => void;
   updateStudyConfig: (newConfig: ExperimentConfig) => void;
@@ -229,6 +230,34 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       last_active_at: new Date().toISOString(),
     }));
   }, []);
+
+  // Action: Re-sync wearable data for a specific date
+  const syncWearableForDate = useCallback(
+    async (targetDate: string): Promise<boolean> => {
+      const wearableData = await fetchWearableDataSilently(targetDate);
+      if (!wearableData) return false;
+
+      setState((prevState) => {
+        const records = [...prevState.records];
+        const existingIdx = records.findIndex((r) => r.date === targetDate);
+        if (existingIdx === -1) return prevState;
+
+        records[existingIdx] = {
+          ...records[existingIdx],
+          wearable_data: wearableData,
+          updated_at: new Date().toISOString(),
+        };
+
+        return {
+          ...prevState,
+          records,
+          last_active_at: new Date().toISOString(),
+        };
+      });
+      return true;
+    },
+    [fetchWearableDataSilently]
+  );
 
   // Action: Submit morning assessment
   const submitMorningAssessment = useCallback(
@@ -519,6 +548,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         submitMorningAssessment,
         updateNightRecord,
         deleteNightRecord,
+        syncWearableForDate,
         logEveningAction,
         acknowledgeEveningProtocol,
         updateStudyConfig,

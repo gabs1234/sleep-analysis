@@ -17,9 +17,10 @@ const UNUSUAL_TAGS: Array<{ value: UnusualNightReason; label: string }> = [
 ];
 
 export function AdherenceCalendar() {
-  const { state, updateNightRecord, deleteNightRecord } = useStudySession();
+  const { state, updateNightRecord, deleteNightRecord, syncWearableForDate } = useStudySession();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isResyncing, setIsResyncing] = useState(false);
 
   // Edit form state
   const [editValidity, setEditValidity] = useState<boolean>(true);
@@ -189,6 +190,22 @@ export function AdherenceCalendar() {
       setSelectedDate(null);
       setAmendSaveNotice(`✓ Erased entry for ${selectedDate}`);
       setTimeout(() => setAmendSaveNotice(null), 3000);
+    }
+  };
+
+  const handleResyncWearable = async () => {
+    if (!selectedDate) return;
+    setIsResyncing(true);
+    try {
+      const ok = await syncWearableForDate(selectedDate);
+      if (ok) {
+        setAmendSaveNotice(`✓ Re-synced wearable data for ${selectedDate}`);
+      } else {
+        setAmendSaveNotice(`Notice: No wearable session found for ${selectedDate}`);
+      }
+      setTimeout(() => setAmendSaveNotice(null), 3000);
+    } finally {
+      setIsResyncing(false);
     }
   };
 
@@ -366,14 +383,25 @@ export function AdherenceCalendar() {
             </div>
           )}
 
-          <div className="pt-2 flex items-center justify-between border-t border-zinc-800/80">
-            <button
-              type="button"
-              onClick={() => startEditing(selectedDate)}
-              className="px-3 py-1.5 rounded-lg bg-zinc-100 text-black font-semibold text-xs hover:bg-white transition-all"
-            >
-              ✏ Amend / Edit this Day
-            </button>
+          <div className="pt-2 flex items-center justify-between border-t border-zinc-800/80 gap-2">
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => startEditing(selectedDate)}
+                className="px-3 py-1.5 rounded-lg bg-zinc-100 text-black font-semibold text-xs hover:bg-white transition-all"
+              >
+                ✏ Amend / Edit
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResyncWearable}
+                disabled={isResyncing}
+                className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 font-mono text-[11px] hover:bg-zinc-800 transition-all"
+              >
+                {isResyncing ? "Syncing..." : "🔄 Re-sync Watch"}
+              </button>
+            </div>
 
             <button
               type="button"

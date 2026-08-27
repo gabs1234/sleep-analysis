@@ -8,7 +8,21 @@ export interface ContextualViewState {
   targetNightRecord: NightRecord | null;
   needsMorningCheckin: boolean;
   needsEveningProtocol: boolean;
+  isMorningWindow: boolean;
   phaseTransitionMessage?: string;
+}
+
+/**
+ * Calculates the canonical night date key for sleep tracking.
+ * If current time is between 00:00 and 04:59 AM, "tonight" refers to the night
+ * that started the previous evening.
+ */
+export function getActiveNightDateKey(currentTime: Date = new Date()): string {
+  const d = new Date(currentTime);
+  if (d.getHours() < 5) {
+    d.setDate(d.getDate() - 1);
+  }
+  return formatDateKey(d);
 }
 
 /**
@@ -20,8 +34,8 @@ export function determineTimeWindowContext(
   state: StudyState,
   currentTime: Date = new Date()
 ): ContextualViewState {
-  const todayDateKey = formatDateKey(currentTime);
   const hour = currentTime.getHours(); // 0 - 23
+  const activeNightKey = getActiveNightDateKey(currentTime);
 
   // Check if study is completed
   const { isAllPhasesComplete } = calculateStudyState(
@@ -32,74 +46,55 @@ export function determineTimeWindowContext(
   if (isAllPhasesComplete) {
     return {
       context: "phase_transition",
-      todayDateKey,
+      todayDateKey: activeNightKey,
       targetNightRecord: null,
       needsMorningCheckin: false,
       needsEveningProtocol: false,
+      isMorningWindow: false,
       phaseTransitionMessage:
         "Congratulations! You have completed all phases of the study protocol.",
     };
   }
 
-  // Find record for today (or pending morning check-in)
-  // Check if there is an existing record for today or yesterday that lacks a morning assessment
-  const existingTodayRecord = state.records.find((r) => r.date === todayDateKey) || null;
+  // Find record for this night
+  const activeRecord = state.records.find((r) => r.date === activeNightKey) || null;
 
-  // If a record exists for today and morning assessment is NOT completed
-  if (existingTodayRecord && !existingTodayRecord.morning_assessment) {
-    return {
-      context: "morning_checkin",
-      todayDateKey,
-      targetNightRecord: existingTodayRecord,
-      needsMorningCheckin: true,
-      needsEveningProtocol: false,
-    };
-  }
+  // Morning Window: 05:00 AM to 13:59 PM
+  const isMorning = hour >= 5 && hour < 14;
 
-  // If no record exists for today yet:
-  // In morning hours (e.g. 04:00 - 13:00), opening app directly presents morning check-in
-  // If the user hasn't logged morning checkin for today yet, morning checkin takes precedence
-  if (!existingTodayRecord) {
-    // If it's early in the day (before 14:00), default to morning check-in
-    // If it's evening and they never checked in morning, they can either do it or start evening
-    if (hour < 14) {
+  if (isMorning) {
+    // If morning check-in has NOT been completed yet, present Morning Check-in
+    if (!activeRecord?.morning_assessment) {
       return {
         context: "morning_checkin",
-        todayDateKey,
-        targetNightRecord: null,
+        todayDateKey: activeNightKey,
+        targetNightRecord: activeRecord,
         needsMorningCheckin: true,
         needsEveningProtocol: false,
-      };
-    } else {
-      // Afternoon / Evening: prompt evening protocol
-      return {
-        context: "evening_protocol",
-        todayDateKey,
-        targetNightRecord: null,
-        needsMorningCheckin: false,
-        needsEveningProtocol: true,
+        isMorningWindow: true,
       };
     }
-  }
 
-  // Today's morning check-in IS completed.
-  // Check evening protocol status
-  if (!existingTodayRecord.evening_acknowledged_at) {
+    // Morning check-in already finished for today
     return {
-      context: "evening_protocol",
-      todayDateKey,
-      targetNightRecord: existingTodayRecord,
+      context: "all_done_today",
+      todayDateKey: activeNightKey,
+      targetNightRecord: activeRecord,
       needsMorningCheckin: false,
-      needsEveningProtocol: true,
+      needsEveningProtocol: false,
+      isMorningWindow: true,
     };
   }
 
-  // Both morning and evening acknowledged
+  // Evening & Night Window: 14:00 PM to 04:59 AM
+  // During evening/night, participant is preparing for, winding down, or entering sleep.
+  // ALWAYS present Evening Protocol and 1-tap event logging buttons.
   return {
-    context: "all_done_today",
-    todayDateKey,
-    targetNightRecord: existingTodayRecord,
+    context: "evening_protocol",
+    todayDateKey: activeNightKey,
+    targetNightRecord: activeRecord,
     needsMorningCheckin: false,
-    needsEveningProtocol: false,
+    needsEveningProtocol: true,
+    isMorningWindow: false,
   };
 }

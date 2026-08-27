@@ -192,12 +192,7 @@ console.log("\n[Test 4] Time-of-Day Context Window Transitions...");
   const morningContext = determineTimeWindowContext(config, state, morningTime);
   console.assert(morningContext.context === "morning_checkin", "07:30 AM prompts morning_checkin");
 
-  // 2. Evening at 20:00 PM -> context must be evening_protocol
-  const eveningTime = new Date("2026-08-27T20:00:00");
-  const eveningContext = determineTimeWindowContext(config, state, eveningTime);
-  console.assert(eveningContext.context === "evening_protocol", "20:00 PM prompts evening_protocol");
-
-  // 3. Late Night at 23:45 PM after acknowledging evening protocol -> all_done_today
+  // 2. Morning after completing morning check-in -> all_done_today
   state.records.push({
     id: "2026-08-27",
     date: "2026-08-27",
@@ -206,7 +201,6 @@ console.log("\n[Test 4] Time-of-Day Context Window Transitions...");
     night_number_in_phase: 1,
     prescribed_instruction: "Follow normal routine",
     evening_actions: [],
-    evening_acknowledged_at: "2026-08-27T21:00:00Z",
     morning_assessment: {
       completed_at: "2026-08-27T08:00:00Z",
       readiness: 2,
@@ -216,12 +210,21 @@ console.log("\n[Test 4] Time-of-Day Context Window Transitions...");
     },
     is_valid: true,
     created_at: "2026-08-27T08:00:00Z",
-    updated_at: "2026-08-27T21:00:00Z",
+    updated_at: "2026-08-27T08:00:00Z",
   });
 
-  const lateNightContext = determineTimeWindowContext(config, state, new Date("2026-08-27T23:45:00"));
-  console.assert(lateNightContext.context === "all_done_today", "Late night after completion shows all_done_today");
-  console.log("  ✓ Time context windows evaluated accurately (Morning, Evening, Done).");
+  const postMorningContext = determineTimeWindowContext(config, state, new Date("2026-08-27T09:30:00"));
+  console.assert(postMorningContext.context === "all_done_today", "Morning after check-in shows all_done_today");
+
+  // 3. Evening at 20:00 PM -> context must be evening_protocol
+  const eveningTime = new Date("2026-08-27T20:00:00");
+  const eveningContext = determineTimeWindowContext(config, state, eveningTime);
+  console.assert(eveningContext.context === "evening_protocol", "20:00 PM prompts evening_protocol");
+
+  // 4. Late Night / Midnight at 23:45 PM or 01:30 AM -> context remains evening_protocol for bedtime events
+  const midnightContext = determineTimeWindowContext(config, state, new Date("2026-08-27T23:45:00"));
+  console.assert(midnightContext.context === "evening_protocol", "Midnight before sleep shows evening_protocol");
+  console.log("  ✓ Time context windows evaluated accurately (Morning checkin, Afternoon done, Nighttime protocol).");
 }
 
 // -------------------------------------------------------------

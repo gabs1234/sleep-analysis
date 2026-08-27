@@ -29,6 +29,7 @@ import {
 } from "@/lib/engine/protocol-engine";
 import {
   determineTimeWindowContext,
+  getActiveNightDateKey,
   ContextualViewState,
 } from "@/lib/engine/time-context";
 import {
@@ -288,7 +289,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // Action: Submit morning assessment
   const submitMorningAssessment = useCallback(
     async (data: Omit<MorningAssessment, "completed_at">) => {
-      const todayKey = formatDateKey();
+      const todayKey = getActiveNightDateKey();
       const completedAt = new Date().toISOString();
 
       const assessment: MorningAssessment = {
@@ -365,7 +366,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // Action: Log evening event timestamp
   const logEveningAction = useCallback(
     (actionId: string, actionLabel: string) => {
-      const todayKey = formatDateKey();
+      const todayKey = getActiveNightDateKey();
       const now = new Date().toISOString();
 
       setState((prevState) => {
@@ -420,7 +421,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   // Action: Acknowledge evening protocol
   const acknowledgeEveningProtocol = useCallback(() => {
-    const todayKey = formatDateKey();
+    const todayKey = getActiveNightDateKey();
     const now = new Date().toISOString();
 
     setState((prevState) => {

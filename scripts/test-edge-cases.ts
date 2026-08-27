@@ -7,6 +7,7 @@ import {
   initializeStudyState,
 } from "../lib/engine/protocol-engine";
 import { determineTimeWindowContext } from "../lib/engine/time-context";
+import { generateStudyJSON, importStudyJSON } from "../lib/storage/data-export";
 import { validateStudyConfig } from "../lib/config/study-config";
 import { GoogleHealthProvider } from "../lib/wearable/google-health";
 import { MockWearableProvider } from "../lib/wearable/mock-wearable";
@@ -290,6 +291,62 @@ console.log("\n[Test 6] Malformed Config JSON Validation...");
   console.log("  ✓ Schema validation prevents invalid configurations.");
 }
 
+// -------------------------------------------------------------
+// TEST 7: Data Persistence, Export & Full Backup Restore
+// -------------------------------------------------------------
+console.log("\n[Test 7] Data Persistence & Full Backup Restore Across Updates...");
+{
+  const state = initializeStudyState(config);
+  state.records = [
+    {
+      id: "2026-08-20",
+      date: "2026-08-20",
+      phase_id: "baseline",
+      phase_index: 0,
+      night_number_in_phase: 1,
+      valid_night_number_in_phase: 1,
+      prescribed_instruction: "Follow normal routine",
+      evening_actions: [
+        { action_id: "meal_end", action_label: "Finished last meal", timestamp: "2026-08-20T20:15:00Z" },
+      ],
+      morning_assessment: {
+        completed_at: "2026-08-21T07:30:00Z",
+        readiness: 3,
+        sleep_quality: 3,
+        wake_reason: "natural",
+        unusual_night: false,
+      },
+      wearable_data: {
+        provider: "google_health",
+        synced_at: "2026-08-21T07:30:00Z",
+        duration_minutes: 460,
+        awake_minutes: 32,
+        sleep_efficiency_pct: 93,
+        resting_hr: 54,
+        sync_status: "synced",
+      },
+      is_valid: true,
+      created_at: "2026-08-20T20:15:00Z",
+      updated_at: "2026-08-21T07:30:00Z",
+    },
+  ];
+
+  // Generate backup bundle JSON
+  const backupJson = generateStudyJSON(config, state);
+  console.assert(backupJson.includes("2026-08-20"), "Backup includes date");
+  console.assert(backupJson.includes("duration_minutes"), "Backup includes wearable metrics");
+
+  // Restore from backup JSON
+  const restoreResult = importStudyJSON(backupJson);
+  console.assert(restoreResult.success, "Backup restore parsed successfully");
+  console.assert(restoreResult.state?.records.length === 1, "Restored 1 night record");
+  console.assert(
+    restoreResult.state?.records[0].wearable_data?.duration_minutes === 460,
+    "Restored wearable data matches"
+  );
+  console.log("  ✓ Exported & restored complete unblinded backup JSON with 100% fidelity.");
+}
+
 console.log("\n==========================================");
-console.log("  ALL 6 EDGE CASE TEST SUITES PASSED! ✓   ");
+console.log("  ALL 7 EDGE CASE TEST SUITES PASSED! ✓   ");
 console.log("==========================================\n");

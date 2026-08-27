@@ -2,7 +2,7 @@ import { ExperimentConfig } from "@/types/experiment";
 import { StudyState } from "@/types/study";
 import { WearableProviderConfig } from "@/types/wearable";
 import { DEFAULT_STUDY_CONFIG } from "@/lib/config/study-config";
-import { initializeStudyState } from "@/lib/engine/protocol-engine";
+import { initializeStudyState, formatDateKey } from "@/lib/engine/protocol-engine";
 
 const STORAGE_KEYS = {
   CONFIG: "sleep_study_config_v1",
@@ -41,11 +41,24 @@ export function loadStoredStudyState(config: ExperimentConfig): StudyState {
     const raw = localStorage.getItem(STORAGE_KEYS.STATE);
     if (!raw) return initializeStudyState(config);
     const parsed = JSON.parse(raw) as StudyState;
-    if (parsed.study_id !== config.study_id) {
-      // If config changed, initialize state for the new config
-      return initializeStudyState(config);
-    }
-    return parsed;
+
+    const existingRecords = Array.isArray(parsed.records) ? parsed.records : [];
+
+    // Ensure all records have valid array fields
+    const sanitizedRecords = existingRecords.map((r) => ({
+      ...r,
+      evening_actions: Array.isArray(r.evening_actions) ? r.evening_actions : [],
+    }));
+
+    return {
+      study_id: config.study_id,
+      status: parsed.status || "active",
+      started_at: parsed.started_at || new Date().toISOString(),
+      current_phase_index: parsed.current_phase_index ?? 0,
+      records: sanitizedRecords,
+      current_night_id: parsed.current_night_id || formatDateKey(),
+      last_active_at: parsed.last_active_at || new Date().toISOString(),
+    };
   } catch (e) {
     console.error("Failed to load study state:", e);
     return initializeStudyState(config);

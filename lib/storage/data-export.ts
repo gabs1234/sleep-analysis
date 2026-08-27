@@ -130,6 +130,42 @@ export function generateStudyCSV(
   return csvLines.join("\n");
 }
 
+export function importStudyJSON(jsonString: string): {
+  success: boolean;
+  error?: string;
+  config?: ExperimentConfig;
+  state?: StudyState;
+} {
+  try {
+    const data = JSON.parse(jsonString);
+    if (!data || typeof data !== "object") {
+      return { success: false, error: "Invalid backup JSON file." };
+    }
+
+    // Support both full export bundles ({ study_config, study_state }) and raw state objects
+    const config: ExperimentConfig | undefined = data.study_config;
+    const state: StudyState | undefined = data.study_state || data;
+
+    if (!Array.isArray(state?.records)) {
+      return {
+        success: false,
+        error: "Backup file is missing valid night records array.",
+      };
+    }
+
+    return {
+      success: true,
+      config,
+      state,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to parse JSON backup",
+    };
+  }
+}
+
 export function downloadFile(filename: string, content: string, mimeType: string): void {
   if (typeof window === "undefined") return;
   const blob = new Blob([content], { type: mimeType });

@@ -9,11 +9,13 @@ import {
 import { GoogleHealthProvider, GoogleHealthDiagnosticResult } from "@/lib/wearable/google-health";
 import { MockWearableProvider } from "@/lib/wearable/mock-wearable";
 import { formatDateKey } from "@/lib/engine/protocol-engine";
+import { importStudyJSON } from "@/lib/storage/data-export";
 
 export default function SettingsPage() {
   const {
     config,
     updateStudyConfig,
+    importBackupData,
     wearableConfig,
     updateWearableConfig,
     resetStudy,
@@ -126,6 +128,38 @@ export default function SettingsPage() {
         setTimeout(() => setSaveNotice(null), 3000);
       }
     }
+  };
+
+  const handleBackupRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const result = importStudyJSON(text);
+
+        if (!result.success || !result.state) {
+          alert(`Failed to restore backup: ${result.error}`);
+          return;
+        }
+
+        if (
+          confirm(
+            `Restore backup with ${result.state.records.length} night records? This will update your tracking state on this device.`
+          )
+        ) {
+          importBackupData(result.state, result.config);
+          setSaveNotice(`✓ Restored backup with ${result.state.records.length} records!`);
+          setTimeout(() => setSaveNotice(null), 3000);
+        }
+      } catch (err) {
+        alert("Failed to read backup file: " + (err instanceof Error ? err.message : String(err)));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -564,7 +598,35 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* 3. Developer & Testing Simulation Tools */}
+      {/* 3. Data Backup & Cross-Device Restore */}
+      <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold text-zinc-100">
+            Data Backup &amp; Device Migration
+          </h2>
+          <p className="text-xs text-zinc-400">
+            Your data is stored locally on this device. Back up anytime or restore to a new phone.
+          </p>
+        </div>
+
+        <div className="space-y-2 pt-1">
+          <input
+            type="file"
+            id="backup-file-upload"
+            accept=".json,application/json"
+            onChange={handleBackupRestore}
+            className="hidden"
+          />
+          <label
+            htmlFor="backup-file-upload"
+            className="w-full py-2.5 px-3 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-xs font-mono text-zinc-200 flex items-center justify-center space-x-2 cursor-pointer transition-all active:scale-[0.98]"
+          >
+            <span>📥 Restore Study from Backup JSON</span>
+          </label>
+        </div>
+      </div>
+
+      {/* 4. Developer & Testing Simulation Tools */}
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-zinc-100">

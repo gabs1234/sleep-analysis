@@ -65,7 +65,8 @@ interface StudyContextType {
   logEveningAction: (actionId: string, actionLabel: string, customTimestamp?: string) => void;
   removeEveningAction: (actionId: string) => void;
   acknowledgeEveningProtocol: () => void;
-  updateStudyConfig: (newConfig: ExperimentConfig) => void;
+  updateStudyConfig: (newConfig: ExperimentConfig, preserveRecords?: boolean) => void;
+  importBackupData: (state: StudyState, config?: ExperimentConfig) => void;
   setStudyStatus: (status: StudyStatus) => void;
   updateWearableConfig: (config: WearableProviderConfig) => void;
   resetStudy: () => void;
@@ -490,14 +491,42 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     });
   }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
 
-  // Action: Update study config
-  const updateStudyConfig = useCallback((newConfig: ExperimentConfig) => {
-    setConfig(newConfig);
-    saveStoredStudyConfig(newConfig);
-    const newState = initializeStudyState(newConfig);
-    setState(newState);
-    saveStoredStudyState(newState);
-  }, []);
+  // Action: Update study config (preserves existing records unless explicitly requested)
+  const updateStudyConfig = useCallback(
+    (newConfig: ExperimentConfig, preserveRecords: boolean = true) => {
+      setConfig(newConfig);
+      saveStoredStudyConfig(newConfig);
+
+      setState((prev) => {
+        const recordsToKeep = preserveRecords ? prev.records : [];
+        const newState: StudyState = {
+          study_id: newConfig.study_id,
+          status: prev.status || "active",
+          started_at: prev.started_at || new Date().toISOString(),
+          current_phase_index: prev.current_phase_index ?? 0,
+          records: recordsToKeep,
+          current_night_id: prev.current_night_id || formatDateKey(),
+          last_active_at: new Date().toISOString(),
+        };
+        saveStoredStudyState(newState);
+        return newState;
+      });
+    },
+    []
+  );
+
+  // Action: Restore full backup data
+  const importBackupData = useCallback(
+    (importedState: StudyState, importedConfig?: ExperimentConfig) => {
+      if (importedConfig) {
+        setConfig(importedConfig);
+        saveStoredStudyConfig(importedConfig);
+      }
+      setState(importedState);
+      saveStoredStudyState(importedState);
+    },
+    []
+  );
 
   // Action: Update study status (active, paused, completed)
   const setStudyStatus = useCallback((status: StudyStatus) => {
@@ -605,6 +634,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         removeEveningAction,
         acknowledgeEveningProtocol,
         updateStudyConfig,
+        importBackupData,
         setStudyStatus,
         updateWearableConfig,
         resetStudy,

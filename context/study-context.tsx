@@ -110,6 +110,32 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
   }, [state, isReady]);
 
+  // Automatically fetch server environment config (e.g. private GOOGLE_CLIENT_ID from Vercel)
+  useEffect(() => {
+    if (isReady) {
+      fetch("/api/config")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.googleClientId) {
+            setWearableConfigState((prev) => {
+              if (prev.client_id !== data.googleClientId) {
+                const updated = {
+                  ...prev,
+                  client_id: data.googleClientId,
+                };
+                saveWearableConfig(updated);
+                return updated;
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {
+          // Running fully offline / local-only
+        });
+    }
+  }, [isReady]);
+
   // Derived study calculations
   const studyCalculations = useMemo(() => {
     return calculateStudyState(config, state.records);

@@ -44,22 +44,25 @@ export default function SettingsPage() {
     wearableConfig.provider_type === "google_health" && wearableConfig.access_token
   );
 
+  const activeClientId = googleClientId || wearableConfig.client_id || "";
+
   const handleStartGoogleOAuth = () => {
-    if (!googleClientId.trim()) {
+    const idToUse = activeClientId.trim();
+    if (!idToUse) {
       alert("Please enter your Google OAuth Client ID first.");
       return;
     }
     const provider = new GoogleHealthProvider({
       ...wearableConfig,
-      client_id: googleClientId.trim(),
+      client_id: idToUse,
     });
     // Save client id so it persists
     updateWearableConfig({
       ...wearableConfig,
-      client_id: googleClientId.trim(),
+      client_id: idToUse,
     });
     const redirectUri = window.location.origin + window.location.pathname;
-    const authUrl = provider.getOAuthAuthorizationUrl(googleClientId.trim(), redirectUri);
+    const authUrl = provider.getOAuthAuthorizationUrl(idToUse, redirectUri);
     window.location.href = authUrl;
   };
 
@@ -323,15 +326,15 @@ export default function SettingsPage() {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs font-mono text-zinc-400">
-                        GOOGLE OAUTH CLIENT ID (WEB APPLICATION)
+                        GOOGLE OAUTH CLIENT ID
                       </label>
                       <span className="text-[10px] font-mono text-emerald-400">
-                        {googleClientId ? "✓ SAVED TO DEVICE" : "REQUIRED"}
+                        {activeClientId ? "✓ CONFIGURED" : "REQUIRED"}
                       </span>
                     </div>
                     <input
                       type="text"
-                      value={googleClientId}
+                      value={activeClientId}
                       onChange={(e) => handleClientIdChange(e.target.value)}
                       placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
                       className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-100 focus:outline-none focus:border-zinc-600"

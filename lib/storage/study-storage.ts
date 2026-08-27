@@ -63,7 +63,6 @@ export function saveStoredStudyState(state: StudyState): void {
 
 export const DEFAULT_WEARABLE_CONFIG: WearableProviderConfig = {
   provider_type: "mock",
-  client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || undefined,
   auto_sync: true,
 };
 
@@ -72,11 +71,7 @@ export function loadWearableConfig(): WearableProviderConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.WEARABLE);
     if (!raw) return DEFAULT_WEARABLE_CONFIG;
-    const parsed = JSON.parse(raw) as WearableProviderConfig;
-    if (!parsed.client_id && process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
-      parsed.client_id = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    }
-    return parsed;
+    return JSON.parse(raw) as WearableProviderConfig;
   } catch (e) {
     console.error("Failed to load wearable config:", e);
     return DEFAULT_WEARABLE_CONFIG;

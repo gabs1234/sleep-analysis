@@ -1,0 +1,59 @@
+{
+  "study_id": "sleep-n-of-1-darkness",
+  "study_name": "Sleep N-of-1 Study",
+  "version": "1.0.0",
+  "description": "N-of-1 crossover trial testing sleep environment darkness vs normal baseline routine.",
+  "target_bedtime": "23:00",
+  "target_wake_time": "07:00",
+  "phases": [
+    {
+      "id": "baseline",
+      "name": "Baseline",
+      "type": "baseline",
+      "valid_nights_required": 21,
+      "description": "Establish individual natural sleep baseline before introducing interventions.",
+      "default_instruction": "Follow your normal routine.",
+      "morning_questions": [
+        "readiness",
+        "sleep_quality",
+        "wake_reason",
+        "unusual_night"
+      ],
+      "next_phase_prep_instruction": "Tomorrow begins the Darkness Intervention phase. Instructions will appear automatically."
+    },
+    {
+      "id": "darkness",
+      "name": "Darkness Experiment",
+      "type": "randomized_experiment",
+      "valid_nights_required": 20,
+      "description": "Randomized alternating blocks comparing darkened room conditions against standard room baseline.",
+      "conditions": {
+        "dark": {
+          "id": "dark",
+          "instruction": "Tonight, make the room as dark as reasonably possible before sleeping.",
+          "secondary_instruction": "Everything else: behave normally."
+        },
+        "normal": {
+          "id": "normal",
+          "instruction": "Tonight, follow your normal sleeping environment.",
+          "secondary_instruction": "Everything else: behave normally."
+        }
+      },
+      "sequence": [
+        "dark", "normal", "normal", "dark",
+        "dark", "normal", "dark", "normal",
+        "normal", "dark", "dark", "normal",
+        "normal", "dark", "normal", "dark",
+        "dark", "normal", "normal", "dark"
+      ],
+      "morning_questions": [
+        "readiness",
+        "sleep_quality",
+        "wake_reason",
+        "protocol_adherence",
+        "unusual_night"
+      ],
+      "next_phase_prep_instruction": "Study protocol complete. All phases finished."
+    }
+  ]
+}

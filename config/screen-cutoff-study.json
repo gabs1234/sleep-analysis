@@ -1,0 +1,66 @@
+{
+  "study_id": "sleep-n-of-1-screen-cutoff",
+  "study_name": "Screen Cutoff N-of-1 Study",
+  "version": "1.0.0",
+  "description": "N-of-1 randomized experiment testing 60-minute pre-bed digital screen cutoff.",
+  "target_bedtime": "23:00",
+  "target_wake_time": "07:00",
+  "phases": [
+    {
+      "id": "baseline",
+      "name": "Baseline",
+      "type": "baseline",
+      "valid_nights_required": 14,
+      "description": "Establish standard routine baseline before screen interventions.",
+      "default_instruction": "Follow your normal routine.",
+      "morning_questions": [
+        "readiness",
+        "sleep_quality",
+        "wake_reason",
+        "unusual_night"
+      ],
+      "next_phase_prep_instruction": "Tomorrow begins the Screen Cutoff phase. You will occasionally be instructed to stop screen use before bedtime."
+    },
+    {
+      "id": "screen_cutoff",
+      "name": "Screen Cutoff Experiment",
+      "type": "randomized_experiment",
+      "valid_nights_required": 20,
+      "conditions": {
+        "screen_cutoff": {
+          "id": "screen_cutoff",
+          "instruction": "Stop active screen use by 22:00 (60 minutes before bedtime).",
+          "secondary_instruction": "Audiobooks or dim background reading are permitted. Everything else: behave normally.",
+          "cutoff_time": "22:00",
+          "cutoff_minutes_before_bed": 60,
+          "actions": [
+            {
+              "id": "screens_off",
+              "label": "Screens off now",
+              "description": "Record exact moment screens were turned off"
+            }
+          ]
+        },
+        "normal": {
+          "id": "normal",
+          "instruction": "Use screens normally tonight as you desire.",
+          "secondary_instruction": "Everything else: behave normally."
+        }
+      },
+      "sequence": [
+        "screen_cutoff", "normal", "normal", "screen_cutoff",
+        "normal", "screen_cutoff", "screen_cutoff", "normal",
+        "screen_cutoff", "normal", "screen_cutoff", "normal",
+        "normal", "screen_cutoff", "normal", "screen_cutoff",
+        "screen_cutoff", "normal", "normal", "screen_cutoff"
+      ],
+      "morning_questions": [
+        "readiness",
+        "sleep_quality",
+        "wake_reason",
+        "protocol_adherence",
+        "unusual_night"
+      ]
+    }
+  ]
+}

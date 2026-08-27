@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "npx jiti scripts/verify-protocol-engine.ts"
   },
   "dependencies": {
     "next": "16.3.3",

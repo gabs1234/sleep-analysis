@@ -21,8 +21,16 @@ export default function SettingsPage() {
   } = useStudySession();
 
   const [googleClientId, setGoogleClientId] = useState(
-    wearableConfig.client_id || ""
+    () => wearableConfig.client_id || ""
   );
+
+  const handleClientIdChange = (value: string) => {
+    setGoogleClientId(value);
+    updateWearableConfig({
+      ...wearableConfig,
+      client_id: value.trim() || undefined,
+    });
+  };
   const [googleTokenInput, setGoogleTokenInput] = useState("");
   const [customJson, setCustomJson] = useState("");
   const [customJsonError, setCustomJsonError] = useState<string | null>(null);
@@ -313,13 +321,18 @@ export default function SettingsPage() {
                 /* Disconnected / Setup State */
                 <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-mono text-zinc-400">
-                      GOOGLE OAUTH CLIENT ID (WEB APPLICATION)
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-mono text-zinc-400">
+                        GOOGLE OAUTH CLIENT ID (WEB APPLICATION)
+                      </label>
+                      <span className="text-[10px] font-mono text-emerald-400">
+                        {googleClientId ? "✓ SAVED TO DEVICE" : "REQUIRED"}
+                      </span>
+                    </div>
                     <input
                       type="text"
                       value={googleClientId}
-                      onChange={(e) => setGoogleClientId(e.target.value)}
+                      onChange={(e) => handleClientIdChange(e.target.value)}
                       placeholder="e.g. 123456789-abc.apps.googleusercontent.com"
                       className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-100 focus:outline-none focus:border-zinc-600"
                     />

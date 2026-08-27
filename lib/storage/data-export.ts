@@ -1,5 +1,6 @@
 import { ExperimentConfig } from "@/types/experiment";
 import { StudyState, NightRecord } from "@/types/study";
+import { formatLocalTime } from "../engine/protocol-engine";
 
 export interface StudyExportBundle {
   exported_at: string;
@@ -83,7 +84,7 @@ export function generateStudyCSV(
     const wearable = record.wearable_data;
     const actionsSummary = record.evening_actions
       ? record.evening_actions
-          .map((a) => `${a.action_id}@${a.timestamp.substring(11, 19)}`)
+          .map((a) => `${a.action_id}@${formatLocalTime(a.timestamp)}`)
           .join(";")
       : "";
 

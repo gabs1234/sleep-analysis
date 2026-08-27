@@ -62,7 +62,8 @@ interface StudyContextType {
   updateNightRecord: (date: string, updates: Partial<NightRecord>) => void;
   deleteNightRecord: (date: string) => void;
   syncWearableForDate: (date: string) => Promise<boolean>;
-  logEveningAction: (actionId: string, actionLabel: string) => void;
+  logEveningAction: (actionId: string, actionLabel: string, customTimestamp?: string) => void;
+  removeEveningAction: (actionId: string) => void;
   acknowledgeEveningProtocol: () => void;
   updateStudyConfig: (newConfig: ExperimentConfig) => void;
   setStudyStatus: (status: StudyStatus) => void;
@@ -363,11 +364,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  // Action: Log evening event timestamp
+  // Action: Log evening event timestamp (supports custom/retroactive timestamp)
   const logEveningAction = useCallback(
-    (actionId: string, actionLabel: string) => {
+    (actionId: string, actionLabel: string, customTimestamp?: string) => {
       const todayKey = getActiveNightDateKey();
-      const now = new Date().toISOString();
+      const now = customTimestamp || new Date().toISOString();
 
       setState((prevState) => {
         const records = [...prevState.records];
@@ -384,11 +385,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
         if (existingIdx >= 0) {
           const rec = records[existingIdx];
-          const actions = [...rec.evening_actions, actionLog];
+          const otherActions = rec.evening_actions.filter((a) => a.action_id !== actionId);
+          const actions = [...otherActions, actionLog];
           records[existingIdx] = {
             ...rec,
             evening_actions: actions,
-            updated_at: now,
+            updated_at: new Date().toISOString(),
           };
         } else {
           const newRecord: NightRecord = {
@@ -403,8 +405,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             secondary_instruction: tonightInstruction.secondaryInstruction,
             evening_actions: [actionLog],
             is_valid: false, // will be evaluated once morning assessment is in
-            created_at: now,
-            updated_at: now,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           };
           records.push(newRecord);
         }
@@ -412,12 +414,35 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         return {
           ...prevState,
           records,
-          last_active_at: now,
+          last_active_at: new Date().toISOString(),
         };
       });
     },
     [config, studyCalculations.activePhaseIndex, tonightInstruction]
   );
+
+  // Action: Remove an evening event action
+  const removeEveningAction = useCallback((actionId: string) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+      if (existingIdx === -1) return prevState;
+
+      const rec = records[existingIdx];
+      records[existingIdx] = {
+        ...rec,
+        evening_actions: rec.evening_actions.filter((a) => a.action_id !== actionId),
+        updated_at: new Date().toISOString(),
+      };
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, []);
 
   // Action: Acknowledge evening protocol
   const acknowledgeEveningProtocol = useCallback(() => {
@@ -577,6 +602,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         deleteNightRecord,
         syncWearableForDate,
         logEveningAction,
+        removeEveningAction,
         acknowledgeEveningProtocol,
         updateStudyConfig,
         setStudyStatus,

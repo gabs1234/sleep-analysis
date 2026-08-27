@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { useStudySession } from "@/context/study-context";
 import { NightRecord, WakeReason, ProtocolAdherence, UnusualNightReason } from "@/types/study";
-import { formatDateKey } from "@/lib/engine/protocol-engine";
+import { formatDateKey, formatLocalTime } from "@/lib/engine/protocol-engine";
 
 const UNUSUAL_TAGS: Array<{ value: UnusualNightReason; label: string }> = [
   { value: "illness", label: "Illness / fever" },
@@ -359,6 +359,15 @@ export function AdherenceCalendar() {
               {selectedRecord.exclusion_reason && (
                 <div className="text-amber-400">
                   Reason: {selectedRecord.exclusion_reason}
+                </div>
+              )}
+
+              {selectedRecord.evening_actions && selectedRecord.evening_actions.length > 0 && (
+                <div className="text-zinc-300">
+                  Evening Logs:{" "}
+                  {selectedRecord.evening_actions
+                    .map((a) => `${a.action_label} (${formatLocalTime(a.timestamp)})`)
+                    .join(" • ")}
                 </div>
               )}
 

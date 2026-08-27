@@ -40,6 +40,47 @@ export function formatDateKey(d: Date = new Date()): string {
 }
 
 /**
+ * Formats an ISO date string to user's local time (HH:MM)
+ */
+export function formatLocalTime(isoString?: string | null): string {
+  if (!isoString) return "";
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString.substring(11, 16);
+    return d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return isoString.substring(11, 16);
+  }
+}
+
+/**
+ * Creates an ISO timestamp offset by a given number of minutes into the past
+ */
+export function createOffsetTimestamp(minutesAgo: number): string {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - minutesAgo);
+  return d.toISOString();
+}
+
+/**
+ * Converts a local time string (HH:MM) into today's ISO timestamp
+ */
+export function timeStringToIso(timeStr: string, baseDate: Date = new Date()): string {
+  const [hours, minutes] = timeStr.split(":").map(Number);
+  const d = new Date(baseDate);
+  d.setHours(hours, minutes, 0, 0);
+  // If time entered is in future (e.g. 23:30 when it's 01:00), it belongs to previous evening
+  if (d > new Date()) {
+    d.setDate(d.getDate() - 1);
+  }
+  return d.toISOString();
+}
+
+/**
  * Evaluates whether a completed night record meets validity criteria for the study.
  * Abnormal nights or complete protocol non-adherence are excluded from valid count
  * without being deleted from the study records.

@@ -1,0 +1,759 @@
+{
+  "schema_version": "1.0",
+  "study": {
+    "id": "personal-sleep-n-of-1-v1",
+    "name": "Personal Sleep Readiness Study",
+    "timezone": "device",
+    "purpose": "Estimate which practical sleep-related changes meaningfully improve this user's morning readiness and perceived sleep quality.",
+    "primary_outcome": "morning_readiness",
+    "secondary_outcomes": [
+      "perceived_sleep_quality",
+      "wearable_total_sleep_minutes",
+      "wearable_waso_minutes",
+      "wearable_sleep_efficiency",
+      "wearable_hrv_rmssd",
+      "wearable_resting_hr"
+    ],
+    "results_policy": {
+      "hide_results_during_active_phase": true,
+      "hide_historical_subjective_answers_during_active_phase": true,
+      "hide_wearable_sleep_score_until_after_morning_checkin": true,
+      "show_trends_during_study": false
+    },
+    "pre_study_setup": {
+      "required": [
+        "connect_wearable_if_available",
+        "enable_notifications_if_desired",
+        "read_and_accept_scale_anchors"
+      ],
+      "optional": [
+        "set_preferred_evening_protocol_preview_time"
+      ]
+    },
+    "baseline_review_gate": {
+      "after_phase": "baseline",
+      "behavior": "pause",
+      "purpose": "Choose only candidate phases that are actionable and worth testing based on baseline and prior evidence.",
+      "user_data_display_required": false
+    }
+  },
+  "interaction": {
+    "default_screen": "today",
+    "show_phase_name_to_user": false,
+    "show_condition_code_to_user": false,
+    "show_progress": true,
+    "progress_format": "valid_nights_current_phase",
+    "target_morning_checkin_seconds": 15,
+    "study_app_interactions_are_exempt_from_screen_cutoff": true,
+    "morning_checkin": {
+      "preferred_within_minutes_of_final_wake": 10,
+      "complete_before": [
+        "caffeine",
+        "food",
+        "deliberate_bright_light_or_outdoor_light",
+        "exercise",
+        "shower"
+      ]
+    },
+    "notifications": {
+      "protocol_preview": {
+        "enabled": true,
+        "timing": "user_configured_evening_time",
+        "content": "Only the actions required for tonight; never show condition codes or results."
+      },
+      "timed_protocol_reminders": {
+        "enabled": true,
+        "timing": "at_required_action_time",
+        "only_when_action_is_time_specific": true
+      },
+      "morning_checkin_reminder": {
+        "enabled": true,
+        "timing": "first_reasonable_morning_opportunity",
+        "content": "Complete the subjective check-in before caffeine, food, deliberate bright light, exercise, or shower."
+      }
+    }
+  },
+  "scales": {
+    "morning_readiness": {
+      "type": "single_choice",
+      "prompt": "How ready do you feel?",
+      "options": [
+        {
+          "value": 0,
+          "label": "Wrecked",
+          "anchor": "Strongly drowsy or foggy; functioning feels difficult."
+        },
+        {
+          "value": 1,
+          "label": "Sluggish",
+          "anchor": "Clearly not ready; functional but noticeably sleepy or foggy."
+        },
+        {
+          "value": 2,
+          "label": "Ready",
+          "anchor": "Basically normal; able to get going without much difficulty."
+        },
+        {
+          "value": 3,
+          "label": "Sharp",
+          "anchor": "Clearly refreshed, alert, and immediately ready."
+        }
+      ]
+    },
+    "perceived_sleep_quality": {
+      "type": "single_choice",
+      "prompt": "How did the sleep itself feel?",
+      "options": [
+        {
+          "value": 0,
+          "label": "Bad",
+          "anchor": "Clearly unrestorative or substantially disrupted."
+        },
+        {
+          "value": 1,
+          "label": "Poor",
+          "anchor": "Slept, but noticeably not well."
+        },
+        {
+          "value": 2,
+          "label": "Good",
+          "anchor": "Adequately restorative."
+        },
+        {
+          "value": 3,
+          "label": "Excellent",
+          "anchor": "Unusually solid and restorative."
+        }
+      ]
+    }
+  },
+  "questions": {
+    "wake_reason": {
+      "type": "single_choice",
+      "prompt": "What caused your final wake-up?",
+      "options": [
+        {
+          "value": "spontaneous",
+          "label": "Natural"
+        },
+        {
+          "value": "alarm",
+          "label": "Alarm"
+        },
+        {
+          "value": "light",
+          "label": "Light"
+        },
+        {
+          "value": "noise",
+          "label": "Noise"
+        },
+        {
+          "value": "other",
+          "label": "Other"
+        },
+        {
+          "value": "unsure",
+          "label": "Unsure"
+        }
+      ]
+    },
+    "protocol_adherence": {
+      "type": "single_choice",
+      "prompt": "Did you follow last night's protocol?",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes"
+        },
+        {
+          "value": "mostly",
+          "label": "Mostly"
+        },
+        {
+          "value": "no",
+          "label": "No"
+        }
+      ],
+      "show_only_when_phase_has_intervention": true
+    },
+    "unusual_night": {
+      "type": "boolean",
+      "prompt": "Anything unusually different about last night?",
+      "default": false
+    },
+    "unusual_reasons": {
+      "type": "multi_choice",
+      "prompt": "What was unusual?",
+      "show_if": {
+        "question": "unusual_night",
+        "equals": true
+      },
+      "options": [
+        {
+          "value": "acute_illness",
+          "label": "Illness"
+        },
+        {
+          "value": "travel_or_different_bed",
+          "label": "Travel / different bed"
+        },
+        {
+          "value": "alcohol",
+          "label": "Alcohol"
+        },
+        {
+          "value": "unusual_caffeine",
+          "label": "Unusual caffeine"
+        },
+        {
+          "value": "unusual_stress",
+          "label": "Unusual stress"
+        },
+        {
+          "value": "unusual_exercise",
+          "label": "Unusual exercise"
+        },
+        {
+          "value": "pain_or_physical_discomfort",
+          "label": "Pain / discomfort"
+        },
+        {
+          "value": "major_sleep_interruption",
+          "label": "Major interruption"
+        },
+        {
+          "value": "other",
+          "label": "Other"
+        }
+      ]
+    }
+  },
+  "manual_events": {
+    "meal_end": {
+      "label": "Finished last meal",
+      "capture": "timestamp_now",
+      "meaning": "End of the final caloric meal or substantial snack before sleep."
+    },
+    "screen_end": {
+      "label": "Active screens done",
+      "capture": "timestamp_now",
+      "meaning": "Last non-study active interaction with phone, computer, tablet, TV, or gaming screen before sleep.",
+      "study_app_exempt": true
+    },
+    "winddown_start": {
+      "label": "Start wind-down",
+      "capture": "timestamp_now",
+      "meaning": "Start of a deliberate low-demand pre-sleep period."
+    },
+    "in_bed_ready": {
+      "label": "In bed",
+      "capture": "timestamp_now",
+      "meaning": "In bed and no longer doing normal daytime activities."
+    },
+    "lights_out": {
+      "label": "Lights out",
+      "capture": "timestamp_now",
+      "meaning": "Beginning of the attempt to fall asleep."
+    }
+  },
+  "automatic_wearable_fields": [
+    {
+      "id": "wearable_sleep_start",
+      "required": false
+    },
+    {
+      "id": "wearable_sleep_end",
+      "required": false
+    },
+    {
+      "id": "wearable_total_sleep_minutes",
+      "required": false
+    },
+    {
+      "id": "wearable_time_in_bed_minutes",
+      "required": false
+    },
+    {
+      "id": "wearable_waso_minutes",
+      "required": false
+    },
+    {
+      "id": "wearable_sleep_efficiency",
+      "required": false
+    },
+    {
+      "id": "wearable_awakenings",
+      "required": false
+    },
+    {
+      "id": "wearable_light_sleep_minutes",
+      "required": false
+    },
+    {
+      "id": "wearable_deep_sleep_minutes",
+      "required": false
+    },
+    {
+      "id": "wearable_rem_sleep_minutes",
+      "required": false
+    },
+    {
+      "id": "wearable_hrv_rmssd",
+      "required": false
+    },
+    {
+      "id": "wearable_resting_hr",
+      "required": false
+    },
+    {
+      "id": "wearable_respiratory_rate",
+      "required": false
+    },
+    {
+      "id": "wearable_spo2",
+      "required": false
+    },
+    {
+      "id": "wearable_skin_temperature",
+      "required": false
+    },
+    {
+      "id": "provider_sleep_score",
+      "required": false,
+      "hidden_during_study": true
+    }
+  ],
+  "night_record_policy": {
+    "always_store_all_nights": true,
+    "never_delete_invalid_nights": true,
+    "hard_invalid_if": [
+      "missing_morning_readiness",
+      "intervention_protocol_adherence_no"
+    ],
+    "flag_but_do_not_auto_invalidate_if": [
+      "unusual_night",
+      "missing_wearable_data",
+      "morning_checkin_more_than_30_minutes_after_wearable_final_wake"
+    ],
+    "replacement_policy_for_invalid_intervention_nights": "append_same_condition_at_random_position_near_phase_end"
+  },
+  "phase_defaults": {
+    "morning_questions": [
+      "morning_readiness",
+      "perceived_sleep_quality",
+      "wake_reason",
+      "protocol_adherence",
+      "unusual_night",
+      "unusual_reasons"
+    ],
+    "evening_events_to_offer": [
+      "meal_end",
+      "screen_end",
+      "winddown_start",
+      "in_bed_ready",
+      "lights_out"
+    ],
+    "reference_sleep_window": {
+      "lights_out": {
+        "source": "baseline_median_manual_lights_out",
+        "round_to_minutes": 15,
+        "allow_user_override_at_phase_start": true
+      },
+      "wake": {
+        "source": "baseline_median_wearable_sleep_end",
+        "round_to_minutes": 15,
+        "allow_user_override_at_phase_start": true
+      },
+      "target_tolerance_minutes": 30
+    }
+  },
+  "phase_order": [
+    "baseline",
+    "darkness",
+    "noise",
+    "screen_cutoff",
+    "structured_winddown",
+    "meal_cutoff",
+    "sleep_window_timing",
+    "sleep_opportunity",
+    "final_protocol_validation"
+  ],
+  "phases": {
+    "baseline": {
+      "enabled": true,
+      "type": "observational",
+      "valid_nights_required": 21,
+      "title_for_user": "Baseline",
+      "tonight_instruction": "Follow your normal routine. Do not intentionally improve or worsen your sleep for the study.",
+      "morning_instruction": "Rate yourself before caffeine, food, deliberate bright light, exercise, or shower.",
+      "on_complete": "pause_until_next_phase_is_enabled"
+    },
+    "darkness": {
+      "enabled": false,
+      "type": "randomized_crossover",
+      "run_only_if": "Baseline suggests bedroom light is a plausible practical target and the user would act on a meaningful effect.",
+      "valid_nights_required": 20,
+      "sequence": [
+        "A",
+        "B",
+        "A",
+        "B",
+        "B",
+        "A",
+        "A",
+        "B",
+        "B",
+        "A",
+        "A",
+        "B",
+        "B",
+        "A",
+        "B",
+        "A",
+        "A",
+        "B",
+        "A",
+        "B"
+      ],
+      "conditions": {
+        "A": {
+          "user_label": "Tonight",
+          "instruction": "Use your bedroom lighting and darkness exactly as you normally would. Do not deliberately improve darkness for the study."
+        },
+        "B": {
+          "user_label": "Tonight",
+          "instruction": "Use the same preselected maximal-practical-darkness setup for the entire sleep period. Keep everything else as normal as possible."
+        }
+      },
+      "phase_setup": {
+        "required_once": true,
+        "prompt": "Choose one practical darkness setup that you can repeat consistently on every intervention night.",
+        "store_as": "darkness_method"
+      },
+      "hold_constant": [
+        "reference_sleep_window",
+        "usual_noise_environment",
+        "usual_meal_behavior",
+        "usual_screen_behavior"
+      ],
+      "on_complete": "advance_to_next_enabled_phase"
+    },
+    "noise": {
+      "enabled": false,
+      "type": "randomized_crossover",
+      "run_only_if": "Baseline suggests bedroom noise is a plausible practical target and the user would act on a meaningful effect.",
+      "valid_nights_required": 20,
+      "sequence": [
+        "A",
+        "B",
+        "A",
+        "B",
+        "A",
+        "B",
+        "A",
+        "B",
+        "A",
+        "B",
+        "B",
+        "A",
+        "A",
+        "B",
+        "B",
+        "A",
+        "B",
+        "A",
+        "A",
+        "B"
+      ],
+      "conditions": {
+        "A": {
+          "user_label": "Tonight",
+          "instruction": "Use your normal sleep environment. Do not deliberately add extra noise protection."
+        },
+        "B": {
+          "user_label": "Tonight",
+          "instruction": "Use the same preselected practical noise-reduction setup for the entire sleep period. Keep everything else as normal as possible."
+        }
+      },
+      "phase_setup": {
+        "required_once": true,
+        "prompt": "Choose one practical noise-reduction method that you can repeat consistently on every intervention night.",
+        "store_as": "noise_reduction_method"
+      },
+      "hold_constant": [
+        "reference_sleep_window",
+        "usual_light_environment",
+        "usual_meal_behavior",
+        "usual_screen_behavior"
+      ],
+      "on_complete": "advance_to_next_enabled_phase"
+    },
+    "screen_cutoff": {
+      "enabled": false,
+      "type": "randomized_multi_condition_crossover",
+      "run_only_if": "The user wants to know the smallest useful active-screen cutoff rather than whether screens are generally associated with sleep.",
+      "valid_nights_required": 24,
+      "sequence": [
+        "S90",
+        "S0",
+        "S60",
+        "S30",
+        "S60",
+        "S30",
+        "S0",
+        "S90",
+        "S90",
+        "S60",
+        "S30",
+        "S0",
+        "S90",
+        "S60",
+        "S0",
+        "S30",
+        "S30",
+        "S90",
+        "S60",
+        "S0",
+        "S30",
+        "S90",
+        "S60",
+        "S0"
+      ],
+      "conditions": {
+        "S0": {
+          "cutoff_minutes_before_target_lights_out": 0,
+          "instruction": "No special screen cutoff tonight. Use active screens as you normally would. Study-app logging is exempt."
+        },
+        "S30": {
+          "cutoff_minutes_before_target_lights_out": 30,
+          "instruction_template": "Stop active non-study screen use by {target_lights_out_minus_30m}. Study-app logging is exempt."
+        },
+        "S60": {
+          "cutoff_minutes_before_target_lights_out": 60,
+          "instruction_template": "Stop active non-study screen use by {target_lights_out_minus_60m}. Study-app logging is exempt."
+        },
+        "S90": {
+          "cutoff_minutes_before_target_lights_out": 90,
+          "instruction_template": "Stop active non-study screen use by {target_lights_out_minus_90m}. Study-app logging is exempt."
+        }
+      },
+      "hold_constant": [
+        "reference_sleep_window",
+        "usual_meal_behavior",
+        "usual_light_environment",
+        "usual_noise_environment"
+      ],
+      "analysis_note": "Treat assigned cutoff as the randomized intervention and actual screen_end timestamp as adherence/dose information.",
+      "on_complete": "advance_to_next_enabled_phase"
+    },
+    "structured_winddown": {
+      "enabled": false,
+      "type": "randomized_crossover",
+      "run_only_if": "The user wants to know whether a defined wind-down routine adds value beyond simply stopping active screen use.",
+      "valid_nights_required": 20,
+      "sequence": [
+        "A",
+        "B",
+        "A",
+        "B",
+        "B",
+        "A",
+        "A",
+        "B",
+        "B",
+        "A",
+        "A",
+        "B",
+        "B",
+        "A",
+        "B",
+        "A",
+        "A",
+        "B",
+        "A",
+        "B"
+      ],
+      "phase_setup": {
+        "required_once": true,
+        "prompt": "Define one 30-minute low-demand wind-down routine that can be repeated consistently.",
+        "store_as": "winddown_routine",
+        "constraints": [
+          "No work",
+          "No active screens except study-app logging",
+          "No vigorous exercise",
+          "No stimulating chores",
+          "Use the same routine on every structured-winddown night"
+        ]
+      },
+      "conditions": {
+        "A": {
+          "instruction_template": "For the final 30 minutes before target lights-out, avoid active screens but otherwise spend the time normally. Do not perform the defined structured wind-down routine."
+        },
+        "B": {
+          "instruction_template": "Begin your defined 30-minute wind-down routine at {target_lights_out_minus_30m}. Avoid active screens except study-app logging."
+        }
+      },
+      "hold_constant": [
+        "reference_sleep_window",
+        "30_minute_active_screen_free_period",
+        "usual_meal_behavior",
+        "usual_light_environment",
+        "usual_noise_environment"
+      ],
+      "on_complete": "advance_to_next_enabled_phase"
+    },
+    "meal_cutoff": {
+      "enabled": false,
+      "type": "randomized_crossover",
+      "run_only_if": "Baseline shows meal timing is close enough to sleep and variable enough that a personal cutoff would be actionable.",
+      "valid_nights_required": 20,
+      "sequence": [
+        "A",
+        "B",
+        "A",
+        "B",
+        "A",
+        "B",
+        "A",
+        "B",
+        "A",
+        "B",
+        "B",
+        "A",
+        "A",
+        "B",
+        "B",
+        "A",
+        "B",
+        "A",
+        "A",
+        "B"
+      ],
+      "conditions": {
+        "A": {
+          "instruction": "Use your normal meal timing tonight. Do not deliberately move your final meal earlier or later for the study."
+        },
+        "B": {
+          "minimum_gap_minutes_before_target_lights_out": 240,
+          "instruction_template": "Finish your final caloric meal or substantial snack by {target_lights_out_minus_240m}."
+        }
+      },
+      "protocol_note": "This tests whether imposing a 4-hour pre-sleep cutoff is worth the inconvenience compared with normal behavior. Do not deliberately eat late on normal-condition nights.",
+      "hold_constant": [
+        "reference_sleep_window",
+        "usual_screen_behavior",
+        "usual_light_environment",
+        "usual_noise_environment"
+      ],
+      "on_complete": "advance_to_next_enabled_phase"
+    },
+    "sleep_window_timing": {
+      "enabled": false,
+      "type": "randomized_block_crossover",
+      "run_only_if": "The user wants to estimate whether an earlier or later sleep window improves readiness while keeping sleep opportunity constant.",
+      "block_length_nights": 7,
+      "block_sequence": [
+        "EARLY",
+        "LATE",
+        "LATE",
+        "EARLY"
+      ],
+      "valid_nights_required": 28,
+      "conditions": {
+        "EARLY": {
+          "shift_minutes_relative_to_reference_window": -60,
+          "instruction": "Use the reference sleep opportunity, shifted 60 minutes earlier."
+        },
+        "LATE": {
+          "shift_minutes_relative_to_reference_window": 60,
+          "instruction": "Use the reference sleep opportunity, shifted 60 minutes later."
+        }
+      },
+      "sleep_opportunity_minutes": {
+        "source": "reference_window_duration",
+        "same_in_both_conditions": true
+      },
+      "hold_constant": [
+        "sleep_opportunity_duration",
+        "usual_meal_behavior",
+        "usual_screen_behavior",
+        "usual_light_environment",
+        "usual_noise_environment"
+      ],
+      "on_complete": "advance_to_next_enabled_phase"
+    },
+    "sleep_opportunity": {
+      "enabled": false,
+      "type": "randomized_block_crossover",
+      "run_only_if": "The user wants to know whether providing more time for sleep meaningfully improves readiness.",
+      "block_length_nights": 7,
+      "block_sequence": [
+        "REFERENCE",
+        "PLUS_60",
+        "PLUS_60",
+        "REFERENCE"
+      ],
+      "valid_nights_required": 28,
+      "conditions": {
+        "REFERENCE": {
+          "sleep_opportunity_minutes": {
+            "source": "reference_window_duration"
+          },
+          "instruction": "Use your reference sleep opportunity."
+        },
+        "PLUS_60": {
+          "sleep_opportunity_minutes": {
+            "source": "reference_window_duration_plus_minutes",
+            "value": 60
+          },
+          "instruction": "Provide yourself 60 additional minutes of sleep opportunity tonight. Do not reduce sleep opportunity below your reference condition."
+        }
+      },
+      "timing_rule": "Prefer adding opportunity by moving lights-out earlier while keeping target wake time fixed unless the user defines a different practical rule at phase start.",
+      "on_complete": "advance_to_next_enabled_phase"
+    },
+    "final_protocol_validation": {
+      "enabled": false,
+      "type": "randomized_crossover",
+      "run_only_if": "At least one previous intervention produced a personally meaningful effect and an optimized routine has been defined.",
+      "valid_nights_required": 24,
+      "sequence": [
+        "A",
+        "B",
+        "A",
+        "B",
+        "B",
+        "A",
+        "A",
+        "B",
+        "B",
+        "A",
+        "A",
+        "B",
+        "B",
+        "A",
+        "B",
+        "A",
+        "A",
+        "B",
+        "A",
+        "B",
+        "B",
+        "A",
+        "A",
+        "B"
+      ],
+      "conditions": {
+        "A": {
+          "instruction": "Follow your normal practical routine."
+        },
+        "B": {
+          "instruction": "Follow the finalized optimized sleep protocol.",
+          "protocol_source": "user_defined_after_prior_phase_analysis"
+        }
+      },
+      "on_complete": "study_complete"
+    }
+  }
+}

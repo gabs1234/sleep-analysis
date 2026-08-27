@@ -117,6 +117,42 @@ export default function SettingsPage() {
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        const validation = validateStudyConfig(parsed);
+
+        if (!validation.valid || !validation.config) {
+          setCustomJsonError(validation.error || "Invalid study protocol format");
+          return;
+        }
+
+        if (
+          confirm(
+            `Load and activate "${validation.config.study_name}" (${validation.config.phases.length} phases)?`
+          )
+        ) {
+          updateStudyConfig(validation.config);
+          setCustomJsonError(null);
+          setCustomJson("");
+          setSaveNotice(`✓ Uploaded & activated "${validation.config.study_name}"`);
+          setTimeout(() => setSaveNotice(null), 3000);
+        }
+      } catch (err) {
+        setCustomJsonError(err instanceof Error ? err.message : "Failed to parse JSON file");
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input value
+    e.target.value = "";
+  };
+
   const handleCustomJsonImport = () => {
     try {
       const parsed = JSON.parse(customJson);
@@ -451,31 +487,62 @@ export default function SettingsPage() {
           </select>
         </div>
 
-        {/* Custom JSON Import */}
-        <div className="space-y-2 pt-2 border-t border-zinc-900">
-          <label className="block text-xs font-mono text-zinc-400">
-            LOAD CUSTOM PROTOCOL JSON
-          </label>
-          <textarea
-            value={customJson}
-            onChange={(e) => {
-              setCustomJson(e.target.value);
-              setCustomJsonError(null);
-            }}
-            placeholder='Paste {"study_id": "...", "phases": [...]}'
-            rows={3}
-            className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-100 focus:outline-none focus:border-zinc-600"
-          />
+        {/* Custom JSON Import / File Upload */}
+        <div className="space-y-3 pt-3 border-t border-zinc-900">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-mono text-zinc-400">
+              IMPORT PROTOCOL JSON
+            </label>
+            <span className="text-[10px] font-mono text-zinc-400">V1 &amp; CUSTOM COMPATIBLE</span>
+          </div>
+
+          {/* File Picker Button */}
+          <div>
+            <input
+              type="file"
+              id="protocol-file-upload"
+              accept=".json,application/json"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <label
+              htmlFor="protocol-file-upload"
+              className="w-full py-3 px-4 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-mono text-zinc-100 flex items-center justify-center space-x-2 cursor-pointer transition-all active:scale-[0.98]"
+            >
+              <span>📁 Upload .JSON Protocol File</span>
+            </label>
+          </div>
+
+          {/* Textarea Fallback */}
+          <div className="space-y-1.5 pt-1">
+            <div className="text-[11px] font-mono text-zinc-400">
+              Or paste JSON directly:
+            </div>
+            <textarea
+              value={customJson}
+              onChange={(e) => {
+                setCustomJson(e.target.value);
+                setCustomJsonError(null);
+              }}
+              placeholder='Paste {"study": {...}, "phases": {...}} or {"study_id": "...", "phases": [...]}'
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-100 focus:outline-none focus:border-zinc-600"
+            />
+          </div>
+
           {customJsonError && (
-            <p className="text-xs font-mono text-rose-400">{customJsonError}</p>
+            <p className="text-xs font-mono text-rose-400 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20">
+              {customJsonError}
+            </p>
           )}
+
           {customJson.trim() && (
             <button
               type="button"
               onClick={handleCustomJsonImport}
-              className="w-full py-2 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 text-xs font-mono transition-all"
+              className="w-full py-2.5 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 text-xs font-mono transition-all"
             >
-              Validate & Apply Protocol
+              Validate &amp; Apply Pasted Protocol
             </button>
           )}
         </div>

@@ -58,6 +58,8 @@ interface StudyContextType {
   submitMorningAssessment: (
     data: Omit<MorningAssessment, "completed_at">
   ) => Promise<void>;
+  updateNightRecord: (date: string, updates: Partial<NightRecord>) => void;
+  deleteNightRecord: (date: string) => void;
   logEveningAction: (actionId: string, actionLabel: string) => void;
   acknowledgeEveningProtocol: () => void;
   updateStudyConfig: (newConfig: ExperimentConfig) => void;
@@ -142,6 +144,91 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     },
     [wearableConfig]
   );
+
+  // Action: Amend/Update an existing night's record
+  const updateNightRecord = useCallback(
+    (targetDate: string, updates: Partial<NightRecord>) => {
+      const now = new Date().toISOString();
+
+      setState((prevState) => {
+        const records = [...prevState.records];
+        const existingIdx = records.findIndex((r) => r.date === targetDate);
+
+        if (existingIdx === -1) {
+          // If amending an untracked past day, create new record
+          const phase = config.phases[studyCalculations.activePhaseIndex];
+          const newRecord: NightRecord = {
+            id: targetDate,
+            date: targetDate,
+            phase_id: updates.phase_id || phase.id,
+            phase_index: updates.phase_index ?? studyCalculations.activePhaseIndex,
+            night_number_in_phase:
+              records.filter((r) => r.phase_id === phase.id).length + 1,
+            prescribed_instruction:
+              updates.prescribed_instruction ||
+              phase.default_instruction ||
+              "Follow your normal routine.",
+            secondary_instruction: "Everything else: behave normally.",
+            evening_actions: updates.evening_actions || [],
+            evening_acknowledged_at: updates.evening_acknowledged_at,
+            morning_assessment: updates.morning_assessment,
+            wearable_data: updates.wearable_data,
+            is_valid: updates.is_valid ?? true,
+            exclusion_reason: updates.exclusion_reason,
+            created_at: now,
+            updated_at: now,
+            ...updates,
+          };
+
+          // Re-evaluate validity
+          if (newRecord.morning_assessment) {
+            const val = evaluateNightValidity(newRecord, phase);
+            newRecord.is_valid = updates.is_valid ?? val.isValid;
+            newRecord.exclusion_reason = updates.exclusion_reason ?? val.reason;
+          }
+
+          records.push(newRecord);
+        } else {
+          const current = records[existingIdx];
+          const phase =
+            config.phases.find((p) => p.id === current.phase_id) ||
+            config.phases[current.phase_index] ||
+            config.phases[0];
+
+          const updated: NightRecord = {
+            ...current,
+            ...updates,
+            updated_at: now,
+          };
+
+          // Re-evaluate validity based on updated assessment
+          if (updates.morning_assessment || updates.is_valid === undefined) {
+            const val = evaluateNightValidity(updated, phase);
+            updated.is_valid = updates.is_valid !== undefined ? updates.is_valid : val.isValid;
+            updated.exclusion_reason = updates.exclusion_reason !== undefined ? updates.exclusion_reason : val.reason;
+          }
+
+          records[existingIdx] = updated;
+        }
+
+        return {
+          ...prevState,
+          records,
+          last_active_at: now,
+        };
+      });
+    },
+    [config, studyCalculations.activePhaseIndex]
+  );
+
+  // Action: Delete a night record
+  const deleteNightRecord = useCallback((targetDate: string) => {
+    setState((prevState) => ({
+      ...prevState,
+      records: prevState.records.filter((r) => r.date !== targetDate),
+      last_active_at: new Date().toISOString(),
+    }));
+  }, []);
 
   // Action: Submit morning assessment
   const submitMorningAssessment = useCallback(
@@ -430,6 +517,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         wearableConfig,
         isReady,
         submitMorningAssessment,
+        updateNightRecord,
+        deleteNightRecord,
         logEveningAction,
         acknowledgeEveningProtocol,
         updateStudyConfig,

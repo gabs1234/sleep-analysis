@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useStudySession } from "@/context/study-context";
 import { generateStudyJSON, generateStudyCSV, downloadFile } from "@/lib/storage/data-export";
+import { AdherenceCalendar } from "@/components/study/adherence-calendar";
 
 export default function StudyPage() {
   const {
@@ -110,6 +111,9 @@ export default function StudyPage() {
           </span>
         </div>
       </div>
+
+      {/* GitHub / MacroFactor Style Adherence Heatmap & Amendment */}
+      <AdherenceCalendar />
 
       {/* Phase Roadmap Overview */}
       <div className="space-y-3">

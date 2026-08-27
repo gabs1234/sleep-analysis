@@ -83,9 +83,22 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     const storedConfig = loadStoredStudyConfig();
     return loadStoredStudyState(storedConfig);
   });
-  const [wearableConfig, setWearableConfigState] = useState<WearableProviderConfig>(() =>
-    loadWearableConfig()
-  );
+  const [wearableConfig, setWearableConfigState] = useState<WearableProviderConfig>(() => {
+    const stored = loadWearableConfig();
+    // Check if OAuth token was provided in URL redirect
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash ? window.location.hash.substring(1) : "";
+      const hashParams = new URLSearchParams(hash);
+      const token = hashParams.get("access_token") || new URLSearchParams(window.location.search).get("access_token");
+      if (token) {
+        stored.provider_type = "google_health";
+        stored.access_token = token;
+        saveWearableConfig(stored);
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+    return stored;
+  });
 
   // Save changes to storage whenever state updates
   useEffect(() => {

@@ -15,8 +15,19 @@ import {
   StudyState,
   NightRecord,
   MorningAssessment,
+  DailySubjectiveContext,
+  PreSleepState,
   StudyStatus,
+  NapLog,
+  CaffeineEventLog,
 } from "@/types/study";
+import { BloatingEvent, BowelMovementEvent } from "@/types/gi";
+import {
+  RawFoodRecord,
+  FoodLogCompleteness,
+  MissingEatingEvent,
+  DailyNutritionFallback,
+} from "@/types/nutrition";
 import { WearableProviderConfig } from "@/types/wearable";
 import {
   formatDateKey,
@@ -26,6 +37,7 @@ import {
   TonightInstruction,
   PhaseProgress,
   initializeStudyState,
+  deriveBehavioralIntervals,
 } from "@/lib/engine/protocol-engine";
 import {
   determineTimeWindowContext,
@@ -43,6 +55,7 @@ import {
 } from "@/lib/storage/study-storage";
 import { MockWearableProvider } from "@/lib/wearable/mock-wearable";
 import { GoogleHealthProvider } from "@/lib/wearable/google-health";
+import { deriveNutritionSummary } from "@/lib/nutrition/nutrition-service";
 
 interface StudyContextType {
   config: ExperimentConfig;
@@ -64,6 +77,15 @@ interface StudyContextType {
   syncWearableForDate: (date: string) => Promise<boolean>;
   logEveningAction: (actionId: string, actionLabel: string, customTimestamp?: string) => void;
   removeEveningAction: (actionId: string) => void;
+  logBloatingEvent: (event: BloatingEvent) => void;
+  logBowelMovement: (event: BowelMovementEvent) => void;
+  saveDailyContext: (context: DailySubjectiveContext) => void;
+  savePreSleepState: (state: PreSleepState) => void;
+  saveFoodLogCompleteness: (completeness: FoodLogCompleteness) => void;
+  saveMissingEatingEvents: (events: MissingEatingEvent[]) => void;
+  saveDailyNutritionFallback: (fallback: DailyNutritionFallback) => void;
+  logNap: (nap: NapLog) => void;
+  logCaffeine: (caffeine: CaffeineEventLog) => void;
   acknowledgeEveningProtocol: () => void;
   updateStudyConfig: (newConfig: ExperimentConfig, preserveRecords?: boolean) => void;
   importBackupData: (state: StudyState, config?: ExperimentConfig) => void;
@@ -91,7 +113,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   });
   const [wearableConfig, setWearableConfigState] = useState<WearableProviderConfig>(() => {
     const stored = loadWearableConfig();
-    // Check if OAuth token was provided in URL redirect
     if (typeof window !== "undefined") {
       const hash = window.location.hash ? window.location.hash.substring(1) : "";
       const hashParams = new URLSearchParams(hash);
@@ -113,7 +134,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
   }, [state, isReady]);
 
-  // Automatically fetch server environment config (e.g. private GOOGLE_CLIENT_ID from Vercel)
+  // Automatically fetch server environment config
   useEffect(() => {
     if (isReady) {
       fetch("/api/config")
@@ -134,7 +155,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           }
         })
         .catch(() => {
-          // Running fully offline / local-only
+          // Offline fallback
         });
     }
   }, [isReady]);
@@ -156,20 +177,28 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     return determineTimeWindowContext(config, state);
   }, [config, state]);
 
-  // Silent wearable sync helper
+  // Silent wearable and nutrition sync helper
   const fetchWearableDataSilently = useCallback(
     async (targetDate: string) => {
       try {
         if (wearableConfig.provider_type === "google_health" && wearableConfig.access_token) {
           const provider = new GoogleHealthProvider(wearableConfig);
-          return await provider.fetchSleepData(targetDate);
+          const [sleep, foods] = await Promise.all([
+            provider.fetchSleepData(targetDate),
+            provider.fetchNutritionData(targetDate),
+          ]);
+          return { sleep, foods };
         } else {
           const provider = new MockWearableProvider();
-          return await provider.fetchSleepData(targetDate);
+          const [sleep, foods] = await Promise.all([
+            provider.fetchSleepData(targetDate),
+            provider.fetchNutritionData(targetDate),
+          ]);
+          return { sleep, foods };
         }
       } catch (err) {
-        console.warn("Silent wearable sync notice:", err);
-        return null;
+        console.warn("Silent wearable & nutrition sync notice:", err);
+        return { sleep: null, foods: [] as RawFoodRecord[] };
       }
     },
     [wearableConfig]
@@ -185,7 +214,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         const existingIdx = records.findIndex((r) => r.date === targetDate);
 
         if (existingIdx === -1) {
-          // If amending an untracked past day, create new record
           const phase = config.phases[studyCalculations.activePhaseIndex];
           const newRecord: NightRecord = {
             id: targetDate,
@@ -203,6 +231,16 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             evening_acknowledged_at: updates.evening_acknowledged_at,
             morning_assessment: updates.morning_assessment,
             wearable_data: updates.wearable_data,
+            bloating_events: updates.bloating_events || [],
+            bowel_movements: updates.bowel_movements || [],
+            daily_context: updates.daily_context,
+            pre_sleep_state: updates.pre_sleep_state,
+            food_log_completeness: updates.food_log_completeness,
+            raw_food_records: updates.raw_food_records || [],
+            missing_eating_events: updates.missing_eating_events || [],
+            nutrition_fallback: updates.nutrition_fallback,
+            naps: updates.naps || [],
+            caffeine_events: updates.caffeine_events || [],
             is_valid: updates.is_valid ?? true,
             exclusion_reason: updates.exclusion_reason,
             created_at: now,
@@ -210,12 +248,21 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             ...updates,
           };
 
-          // Re-evaluate validity
           if (newRecord.morning_assessment) {
             const val = evaluateNightValidity(newRecord, phase);
             newRecord.is_valid = updates.is_valid ?? val.isValid;
             newRecord.exclusion_reason = updates.exclusion_reason ?? val.reason;
           }
+
+          newRecord.derived_intervals = deriveBehavioralIntervals(newRecord);
+          const lightsOut = newRecord.evening_actions.find((a) => a.action_id === "lights_out")?.timestamp;
+          newRecord.derived_nutrition = deriveNutritionSummary(
+            newRecord.raw_food_records,
+            newRecord.missing_eating_events,
+            newRecord.nutrition_fallback,
+            newRecord.food_log_completeness || "yes",
+            lightsOut
+          );
 
           records.push(newRecord);
         } else {
@@ -231,12 +278,21 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             updated_at: now,
           };
 
-          // Re-evaluate validity based on updated assessment
           if (updates.morning_assessment || updates.is_valid === undefined) {
             const val = evaluateNightValidity(updated, phase);
             updated.is_valid = updates.is_valid !== undefined ? updates.is_valid : val.isValid;
             updated.exclusion_reason = updates.exclusion_reason !== undefined ? updates.exclusion_reason : val.reason;
           }
+
+          updated.derived_intervals = deriveBehavioralIntervals(updated);
+          const lightsOut = updated.evening_actions.find((a) => a.action_id === "lights_out")?.timestamp;
+          updated.derived_nutrition = deriveNutritionSummary(
+            updated.raw_food_records,
+            updated.missing_eating_events,
+            updated.nutrition_fallback,
+            updated.food_log_completeness || "yes",
+            lightsOut
+          );
 
           records[existingIdx] = updated;
         }
@@ -260,22 +316,38 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  // Action: Re-sync wearable data for a specific date
+  // Action: Re-sync wearable and nutrition data for a specific date
   const syncWearableForDate = useCallback(
     async (targetDate: string): Promise<boolean> => {
-      const wearableData = await fetchWearableDataSilently(targetDate);
-      if (!wearableData) return false;
+      const { sleep, foods } = await fetchWearableDataSilently(targetDate);
+      if (!sleep && (!foods || foods.length === 0)) return false;
 
       setState((prevState) => {
         const records = [...prevState.records];
         const existingIdx = records.findIndex((r) => r.date === targetDate);
         if (existingIdx === -1) return prevState;
 
-        records[existingIdx] = {
-          ...records[existingIdx],
-          wearable_data: wearableData,
+        const currentRec = records[existingIdx];
+        const mergedFoods = foods.length > 0 ? foods : (currentRec.raw_food_records || []);
+        const lightsOut = currentRec.evening_actions.find((a) => a.action_id === "lights_out")?.timestamp;
+        const derivedNutrition = deriveNutritionSummary(
+          mergedFoods,
+          currentRec.missing_eating_events,
+          currentRec.nutrition_fallback,
+          currentRec.food_log_completeness || "yes",
+          lightsOut
+        );
+
+        const updated: NightRecord = {
+          ...currentRec,
+          wearable_data: sleep || currentRec.wearable_data,
+          raw_food_records: mergedFoods,
+          derived_nutrition: derivedNutrition,
           updated_at: new Date().toISOString(),
         };
+
+        updated.derived_intervals = deriveBehavioralIntervals(updated);
+        records[existingIdx] = updated;
 
         return {
           ...prevState,
@@ -288,6 +360,454 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     [fetchWearableDataSilently]
   );
 
+  // Action: Save Food Log Completeness
+  const saveFoodLogCompleteness = useCallback((completeness: FoodLogCompleteness) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+
+      if (existingIdx >= 0) {
+        const rec = records[existingIdx];
+        const lightsOut = rec.evening_actions.find((a) => a.action_id === "lights_out")?.timestamp;
+        const derivedNutrition = deriveNutritionSummary(
+          rec.raw_food_records,
+          rec.missing_eating_events,
+          rec.nutrition_fallback,
+          completeness,
+          lightsOut
+        );
+
+        records[existingIdx] = {
+          ...rec,
+          food_log_completeness: completeness,
+          derived_nutrition: derivedNutrition,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        const phase = config.phases[studyCalculations.activePhaseIndex];
+        const newRecord: NightRecord = {
+          id: todayKey,
+          date: todayKey,
+          phase_id: phase.id,
+          phase_index: studyCalculations.activePhaseIndex,
+          night_number_in_phase: records.filter((r) => r.phase_id === phase.id).length + 1,
+          condition_key: tonightInstruction.conditionKey,
+          prescribed_instruction: tonightInstruction.primaryInstruction,
+          secondary_instruction: tonightInstruction.secondaryInstruction,
+          evening_actions: [],
+          food_log_completeness: completeness,
+          is_valid: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        newRecord.derived_nutrition = deriveNutritionSummary(
+          [],
+          [],
+          undefined,
+          completeness
+        );
+        records.push(newRecord);
+      }
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
+
+  // Action: Save Missing Eating Events (for "Mostly")
+  const saveMissingEatingEvents = useCallback((events: MissingEatingEvent[]) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+
+      if (existingIdx >= 0) {
+        const rec = records[existingIdx];
+        const lightsOut = rec.evening_actions.find((a) => a.action_id === "lights_out")?.timestamp;
+        const derivedNutrition = deriveNutritionSummary(
+          rec.raw_food_records,
+          events,
+          rec.nutrition_fallback,
+          "mostly",
+          lightsOut
+        );
+
+        records[existingIdx] = {
+          ...rec,
+          food_log_completeness: "mostly",
+          missing_eating_events: events,
+          derived_nutrition: derivedNutrition,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        const phase = config.phases[studyCalculations.activePhaseIndex];
+        const newRecord: NightRecord = {
+          id: todayKey,
+          date: todayKey,
+          phase_id: phase.id,
+          phase_index: studyCalculations.activePhaseIndex,
+          night_number_in_phase: records.filter((r) => r.phase_id === phase.id).length + 1,
+          condition_key: tonightInstruction.conditionKey,
+          prescribed_instruction: tonightInstruction.primaryInstruction,
+          secondary_instruction: tonightInstruction.secondaryInstruction,
+          evening_actions: [],
+          food_log_completeness: "mostly",
+          missing_eating_events: events,
+          is_valid: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        newRecord.derived_nutrition = deriveNutritionSummary(
+          [],
+          events,
+          undefined,
+          "mostly"
+        );
+        records.push(newRecord);
+      }
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
+
+  // Action: Save Daily Nutrition Fallback (for "No")
+  const saveDailyNutritionFallback = useCallback((fallback: DailyNutritionFallback) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+
+      if (existingIdx >= 0) {
+        const rec = records[existingIdx];
+        const lightsOut = rec.evening_actions.find((a) => a.action_id === "lights_out")?.timestamp;
+        const derivedNutrition = deriveNutritionSummary(
+          rec.raw_food_records,
+          rec.missing_eating_events,
+          fallback,
+          "no",
+          lightsOut
+        );
+
+        // Mirror eating_out_of_control into daily_context if present
+        const dailyContext = {
+          ...rec.daily_context,
+          eating_out_of_control: fallback.eating_out_of_control ?? rec.daily_context?.eating_out_of_control,
+        };
+
+        records[existingIdx] = {
+          ...rec,
+          food_log_completeness: "no",
+          nutrition_fallback: fallback,
+          daily_context: dailyContext,
+          derived_nutrition: derivedNutrition,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        const phase = config.phases[studyCalculations.activePhaseIndex];
+        const newRecord: NightRecord = {
+          id: todayKey,
+          date: todayKey,
+          phase_id: phase.id,
+          phase_index: studyCalculations.activePhaseIndex,
+          night_number_in_phase: records.filter((r) => r.phase_id === phase.id).length + 1,
+          condition_key: tonightInstruction.conditionKey,
+          prescribed_instruction: tonightInstruction.primaryInstruction,
+          secondary_instruction: tonightInstruction.secondaryInstruction,
+          evening_actions: [],
+          food_log_completeness: "no",
+          nutrition_fallback: fallback,
+          daily_context: {
+            eating_out_of_control: fallback.eating_out_of_control,
+          },
+          is_valid: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        newRecord.derived_nutrition = deriveNutritionSummary(
+          [],
+          [],
+          fallback,
+          "no"
+        );
+        records.push(newRecord);
+      }
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
+
+  // Action: Log bloating event
+  const logBloatingEvent = useCallback((event: BloatingEvent) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+
+      if (existingIdx >= 0) {
+        const rec = records[existingIdx];
+        const bloatingList = [...(rec.bloating_events || []), event];
+        records[existingIdx] = {
+          ...rec,
+          bloating_events: bloatingList,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        const phase = config.phases[studyCalculations.activePhaseIndex];
+        const newRecord: NightRecord = {
+          id: todayKey,
+          date: todayKey,
+          phase_id: phase.id,
+          phase_index: studyCalculations.activePhaseIndex,
+          night_number_in_phase: records.filter((r) => r.phase_id === phase.id).length + 1,
+          condition_key: tonightInstruction.conditionKey,
+          prescribed_instruction: tonightInstruction.primaryInstruction,
+          secondary_instruction: tonightInstruction.secondaryInstruction,
+          evening_actions: [],
+          bloating_events: [event],
+          is_valid: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        records.push(newRecord);
+      }
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
+
+  // Action: Log bowel movement event
+  const logBowelMovement = useCallback((event: BowelMovementEvent) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+
+      if (existingIdx >= 0) {
+        const rec = records[existingIdx];
+        const bmList = [...(rec.bowel_movements || []), event];
+        records[existingIdx] = {
+          ...rec,
+          bowel_movements: bmList,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        const phase = config.phases[studyCalculations.activePhaseIndex];
+        const newRecord: NightRecord = {
+          id: todayKey,
+          date: todayKey,
+          phase_id: phase.id,
+          phase_index: studyCalculations.activePhaseIndex,
+          night_number_in_phase: records.filter((r) => r.phase_id === phase.id).length + 1,
+          condition_key: tonightInstruction.conditionKey,
+          prescribed_instruction: tonightInstruction.primaryInstruction,
+          secondary_instruction: tonightInstruction.secondaryInstruction,
+          evening_actions: [],
+          bowel_movements: [event],
+          is_valid: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        records.push(newRecord);
+      }
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
+
+  // Action: Save Daily Subjective Context
+  const saveDailyContext = useCallback((dailyContext: DailySubjectiveContext) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+
+      if (existingIdx >= 0) {
+        records[existingIdx] = {
+          ...records[existingIdx],
+          daily_context: dailyContext,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        const phase = config.phases[studyCalculations.activePhaseIndex];
+        const newRecord: NightRecord = {
+          id: todayKey,
+          date: todayKey,
+          phase_id: phase.id,
+          phase_index: studyCalculations.activePhaseIndex,
+          night_number_in_phase: records.filter((r) => r.phase_id === phase.id).length + 1,
+          condition_key: tonightInstruction.conditionKey,
+          prescribed_instruction: tonightInstruction.primaryInstruction,
+          secondary_instruction: tonightInstruction.secondaryInstruction,
+          evening_actions: [],
+          daily_context: dailyContext,
+          is_valid: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        records.push(newRecord);
+      }
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
+
+  // Action: Save Pre-Sleep State
+  const savePreSleepState = useCallback((preSleep: PreSleepState) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+
+      if (existingIdx >= 0) {
+        records[existingIdx] = {
+          ...records[existingIdx],
+          pre_sleep_state: preSleep,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        const phase = config.phases[studyCalculations.activePhaseIndex];
+        const newRecord: NightRecord = {
+          id: todayKey,
+          date: todayKey,
+          phase_id: phase.id,
+          phase_index: studyCalculations.activePhaseIndex,
+          night_number_in_phase: records.filter((r) => r.phase_id === phase.id).length + 1,
+          condition_key: tonightInstruction.conditionKey,
+          prescribed_instruction: tonightInstruction.primaryInstruction,
+          secondary_instruction: tonightInstruction.secondaryInstruction,
+          evening_actions: [],
+          pre_sleep_state: preSleep,
+          is_valid: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        records.push(newRecord);
+      }
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
+
+  // Action: Log Nap
+  const logNap = useCallback((nap: NapLog) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+
+      if (existingIdx >= 0) {
+        const rec = records[existingIdx];
+        const naps = [...(rec.naps || []), nap];
+        const updated: NightRecord = {
+          ...rec,
+          naps,
+          updated_at: new Date().toISOString(),
+        };
+        updated.derived_intervals = deriveBehavioralIntervals(updated);
+        records[existingIdx] = updated;
+      } else {
+        const phase = config.phases[studyCalculations.activePhaseIndex];
+        const newRecord: NightRecord = {
+          id: todayKey,
+          date: todayKey,
+          phase_id: phase.id,
+          phase_index: studyCalculations.activePhaseIndex,
+          night_number_in_phase: records.filter((r) => r.phase_id === phase.id).length + 1,
+          condition_key: tonightInstruction.conditionKey,
+          prescribed_instruction: tonightInstruction.primaryInstruction,
+          secondary_instruction: tonightInstruction.secondaryInstruction,
+          evening_actions: [],
+          naps: [nap],
+          is_valid: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        newRecord.derived_intervals = deriveBehavioralIntervals(newRecord);
+        records.push(newRecord);
+      }
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
+
+  // Action: Log Caffeine Event
+  const logCaffeine = useCallback((caffeine: CaffeineEventLog) => {
+    const todayKey = getActiveNightDateKey();
+    setState((prevState) => {
+      const records = [...prevState.records];
+      const existingIdx = records.findIndex((r) => r.date === todayKey);
+
+      if (existingIdx >= 0) {
+        const rec = records[existingIdx];
+        const caffs = [...(rec.caffeine_events || []), caffeine];
+        const updated: NightRecord = {
+          ...rec,
+          caffeine_events: caffs,
+          updated_at: new Date().toISOString(),
+        };
+        updated.derived_intervals = deriveBehavioralIntervals(updated);
+        records[existingIdx] = updated;
+      } else {
+        const phase = config.phases[studyCalculations.activePhaseIndex];
+        const newRecord: NightRecord = {
+          id: todayKey,
+          date: todayKey,
+          phase_id: phase.id,
+          phase_index: studyCalculations.activePhaseIndex,
+          night_number_in_phase: records.filter((r) => r.phase_id === phase.id).length + 1,
+          condition_key: tonightInstruction.conditionKey,
+          prescribed_instruction: tonightInstruction.primaryInstruction,
+          secondary_instruction: tonightInstruction.secondaryInstruction,
+          evening_actions: [],
+          caffeine_events: [caffeine],
+          is_valid: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        newRecord.derived_intervals = deriveBehavioralIntervals(newRecord);
+        records.push(newRecord);
+      }
+
+      return {
+        ...prevState,
+        records,
+        last_active_at: new Date().toISOString(),
+      };
+    });
+  }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
+
   // Action: Submit morning assessment
   const submitMorningAssessment = useCallback(
     async (data: Omit<MorningAssessment, "completed_at">) => {
@@ -299,8 +819,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         completed_at: completedAt,
       };
 
-      // Background silent wearable sync
-      const wearableData = await fetchWearableDataSilently(todayKey);
+      // Background silent wearable & nutrition sync
+      const { sleep, foods } = await fetchWearableDataSilently(todayKey);
 
       setState((prevState) => {
         const records = [...prevState.records];
@@ -309,16 +829,25 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         const currentPhaseIdx = studyCalculations.activePhaseIndex;
         const phase = config.phases[currentPhaseIdx];
 
-        // Evaluate validity
         const validity = evaluateNightValidity(
           { morning_assessment: assessment },
           phase
         );
 
-        // Count valid nights so far in this phase
         const priorValidNights = records.filter(
           (r) => r.phase_id === phase.id && r.is_valid && r.date !== todayKey
         ).length;
+
+        const existingRec = existingIdx >= 0 ? records[existingIdx] : undefined;
+        const mergedFoods = foods.length > 0 ? foods : (existingRec?.raw_food_records || []);
+        const lightsOut = existingRec?.evening_actions.find((a) => a.action_id === "lights_out")?.timestamp;
+        const derivedNutrition = deriveNutritionSummary(
+          mergedFoods,
+          existingRec?.missing_eating_events,
+          existingRec?.nutrition_fallback,
+          existingRec?.food_log_completeness || "yes",
+          lightsOut
+        );
 
         const updatedRecord: NightRecord = {
           id: todayKey,
@@ -333,16 +862,28 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           condition_key: tonightInstruction.conditionKey,
           prescribed_instruction: tonightInstruction.primaryInstruction,
           secondary_instruction: tonightInstruction.secondaryInstruction,
-          evening_actions: existingIdx >= 0 ? records[existingIdx].evening_actions : [],
-          evening_acknowledged_at:
-            existingIdx >= 0 ? records[existingIdx].evening_acknowledged_at : undefined,
+          evening_actions: existingRec ? existingRec.evening_actions : [],
+          evening_acknowledged_at: existingRec?.evening_acknowledged_at,
+          daily_context: existingRec?.daily_context,
+          pre_sleep_state: existingRec?.pre_sleep_state,
+          bloating_events: existingRec?.bloating_events || [],
+          bowel_movements: existingRec?.bowel_movements || [],
+          food_log_completeness: existingRec?.food_log_completeness,
+          raw_food_records: mergedFoods,
+          missing_eating_events: existingRec?.missing_eating_events || [],
+          nutrition_fallback: existingRec?.nutrition_fallback,
+          derived_nutrition: derivedNutrition,
+          naps: existingRec?.naps || [],
+          caffeine_events: existingRec?.caffeine_events || [],
           morning_assessment: assessment,
-          wearable_data: wearableData || undefined,
+          wearable_data: sleep || existingRec?.wearable_data,
           is_valid: validity.isValid,
           exclusion_reason: validity.reason,
-          created_at: existingIdx >= 0 ? records[existingIdx].created_at : completedAt,
+          created_at: existingRec ? existingRec.created_at : completedAt,
           updated_at: completedAt,
         };
+
+        updatedRecord.derived_intervals = deriveBehavioralIntervals(updatedRecord);
 
         if (existingIdx >= 0) {
           records[existingIdx] = updatedRecord;
@@ -365,7 +906,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  // Action: Log evening event timestamp (supports custom/retroactive timestamp)
+  // Action: Log evening event timestamp
   const logEveningAction = useCallback(
     (actionId: string, actionLabel: string, customTimestamp?: string) => {
       const todayKey = getActiveNightDateKey();
@@ -388,11 +929,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           const rec = records[existingIdx];
           const otherActions = rec.evening_actions.filter((a) => a.action_id !== actionId);
           const actions = [...otherActions, actionLog];
-          records[existingIdx] = {
+          const updated: NightRecord = {
             ...rec,
             evening_actions: actions,
             updated_at: new Date().toISOString(),
           };
+          updated.derived_intervals = deriveBehavioralIntervals(updated);
+          records[existingIdx] = updated;
         } else {
           const newRecord: NightRecord = {
             id: todayKey,
@@ -405,10 +948,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             prescribed_instruction: tonightInstruction.primaryInstruction,
             secondary_instruction: tonightInstruction.secondaryInstruction,
             evening_actions: [actionLog],
-            is_valid: false, // will be evaluated once morning assessment is in
+            is_valid: false,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           };
+          newRecord.derived_intervals = deriveBehavioralIntervals(newRecord);
           records.push(newRecord);
         }
 
@@ -431,11 +975,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       if (existingIdx === -1) return prevState;
 
       const rec = records[existingIdx];
-      records[existingIdx] = {
+      const updated: NightRecord = {
         ...rec,
         evening_actions: rec.evening_actions.filter((a) => a.action_id !== actionId),
         updated_at: new Date().toISOString(),
       };
+      updated.derived_intervals = deriveBehavioralIntervals(updated);
+      records[existingIdx] = updated;
 
       return {
         ...prevState,
@@ -491,7 +1037,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     });
   }, [config, studyCalculations.activePhaseIndex, tonightInstruction]);
 
-  // Action: Update study config (preserves existing records unless explicitly requested)
+  // Action: Update study config
   const updateStudyConfig = useCallback(
     (newConfig: ExperimentConfig, preserveRecords: boolean = true) => {
       setConfig(newConfig);
@@ -528,7 +1074,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  // Action: Update study status (active, paused, completed)
+  // Action: Update study status
   const setStudyStatus = useCallback((status: StudyStatus) => {
     setState((prev) => ({
       ...prev,
@@ -550,18 +1096,17 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     setState(freshState);
   }, [config]);
 
-  // Simulation helper for dev testing: adds a completed synthetic night
+  // Simulation helper for dev testing
   const simulateAddCompletedNight = useCallback(
     async (overrides?: Partial<MorningAssessment>) => {
-      // Calculate simulated date based on records length
       const baseDate = new Date();
       baseDate.setDate(baseDate.getDate() - (30 - state.records.length));
       const dateKey = formatDateKey(baseDate);
 
       const assessment: MorningAssessment = {
         completed_at: new Date().toISOString(),
-        readiness: 2, // Ready
-        sleep_quality: 2, // Good
+        readiness: 2,
+        sleep_quality: 2,
         wake_reason: "natural",
         protocol_adherence: "yes",
         unusual_night: false,
@@ -570,7 +1115,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
       const phase = config.phases[studyCalculations.activePhaseIndex];
       const validity = evaluateNightValidity({ morning_assessment: assessment }, phase);
-      const wearableData = await fetchWearableDataSilently(dateKey);
+      const { sleep, foods } = await fetchWearableDataSilently(dateKey);
 
       setState((prevState) => {
         const records = [...prevState.records];
@@ -589,13 +1134,32 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           secondary_instruction: tonightInstruction.secondaryInstruction,
           evening_actions: [],
           evening_acknowledged_at: new Date().toISOString(),
+          daily_context: {
+            overall_stress: 1,
+            work_stress: 1,
+            work_satisfaction: 2,
+            meaningful_social_contact: 2,
+            routine_adherence: 3,
+            eating_out_of_control: 0,
+            completed_at: new Date().toISOString(),
+          },
+          pre_sleep_state: {
+            mental_arousal: 1,
+            sleepiness: 2,
+            completed_at: new Date().toISOString(),
+          },
+          food_log_completeness: "yes",
+          raw_food_records: foods,
+          derived_nutrition: deriveNutritionSummary(foods),
           morning_assessment: assessment,
-          wearable_data: wearableData || undefined,
+          wearable_data: sleep || undefined,
           is_valid: validity.isValid,
           exclusion_reason: validity.reason,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
+
+        newRecord.derived_intervals = deriveBehavioralIntervals(newRecord);
         records.push(newRecord);
 
         return {
@@ -632,6 +1196,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         syncWearableForDate,
         logEveningAction,
         removeEveningAction,
+        logBloatingEvent,
+        logBowelMovement,
+        saveDailyContext,
+        savePreSleepState,
+        saveFoodLogCompleteness,
+        saveMissingEatingEvents,
+        saveDailyNutritionFallback,
+        logNap,
+        logCaffeine,
         acknowledgeEveningProtocol,
         updateStudyConfig,
         importBackupData,

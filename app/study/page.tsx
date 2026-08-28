@@ -2,7 +2,13 @@
 
 import React, { useState } from "react";
 import { useStudySession } from "@/context/study-context";
-import { generateStudyJSON, generateStudyCSV, downloadFile } from "@/lib/storage/data-export";
+import {
+  generateStudyJSON,
+  generateStudyCSV,
+  generateRawFoodRecordsCSV,
+  generateRawGISymptomsCSV,
+  downloadFile,
+} from "@/lib/storage/data-export";
 import { AdherenceCalendar } from "@/components/study/adherence-calendar";
 
 export default function StudyPage() {
@@ -24,18 +30,40 @@ export default function StudyPage() {
       jsonStr,
       "application/json"
     );
-    setExportNotice("Exported JSON successfully");
+    setExportNotice("Exported full study JSON bundle");
     setTimeout(() => setExportNotice(null), 3000);
   };
 
-  const handleExportCSV = () => {
+  const handleExportDailyCSV = () => {
     const csvStr = generateStudyCSV(config, state);
     downloadFile(
-      `${config.study_id}_data_${new Date().toISOString().substring(0, 10)}.csv`,
+      `${config.study_id}_daily_summary_${new Date().toISOString().substring(0, 10)}.csv`,
       csvStr,
       "text/csv"
     );
-    setExportNotice("Exported CSV successfully");
+    setExportNotice("Exported daily summary CSV");
+    setTimeout(() => setExportNotice(null), 3000);
+  };
+
+  const handleExportRawFoodCSV = () => {
+    const csvStr = generateRawFoodRecordsCSV(state);
+    downloadFile(
+      `${config.study_id}_raw_food_records_${new Date().toISOString().substring(0, 10)}.csv`,
+      csvStr,
+      "text/csv"
+    );
+    setExportNotice("Exported raw food stream CSV");
+    setTimeout(() => setExportNotice(null), 3000);
+  };
+
+  const handleExportRawGICSV = () => {
+    const csvStr = generateRawGISymptomsCSV(state);
+    downloadFile(
+      `${config.study_id}_raw_gi_symptoms_${new Date().toISOString().substring(0, 10)}.csv`,
+      csvStr,
+      "text/csv"
+    );
+    setExportNotice("Exported raw GI symptoms CSV");
     setTimeout(() => setExportNotice(null), 3000);
   };
 
@@ -53,7 +81,7 @@ export default function StudyPage() {
     : "Not started";
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-8 space-y-8 animate-fade-in">
+    <div className="w-full max-w-md mx-auto px-4 py-8 space-y-8 animate-fade-in pb-20">
       {/* Header */}
       <div className="space-y-1">
         <div className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
@@ -163,37 +191,63 @@ export default function StudyPage() {
         </div>
       </div>
 
-      {/* Control Actions */}
+      {/* Data Export & Control Actions */}
       <div className="space-y-3 pt-2">
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={togglePause}
-            className="py-3 rounded-xl border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 text-xs font-mono text-zinc-300 active:scale-[0.98] transition-all"
-          >
-            {state.status === "paused" ? "▶ Resume study" : "⏸ Pause study"}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="py-3 rounded-xl border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 text-xs font-mono text-zinc-300 active:scale-[0.98] transition-all"
-          >
-            ⬇ Export CSV
-          </button>
+        <div className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
+          DATA EXPORT &amp; CONTROLS
         </div>
 
         <button
           type="button"
-          onClick={handleExportJSON}
-          className="w-full py-3 rounded-xl border border-zinc-900 bg-zinc-950 hover:bg-zinc-900 text-xs font-mono text-zinc-400 hover:text-zinc-200 active:scale-[0.98] transition-all"
+          onClick={togglePause}
+          className="w-full py-2.5 rounded-xl border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 text-xs font-mono text-zinc-300 active:scale-[0.98] transition-all"
         >
-          ⬇ Export Full Study JSON (Unblinded Backup)
+          {state.status === "paused" ? "▶ Resume study" : "⏸ Pause study"}
         </button>
 
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={handleExportDailyCSV}
+            className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-left text-xs transition-all active:scale-[0.98]"
+          >
+            <div className="font-semibold text-zinc-200">⬇ Daily Summary CSV</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">Context, sleep &amp; outcomes</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportRawFoodCSV}
+            className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-left text-xs transition-all active:scale-[0.98]"
+          >
+            <div className="font-semibold text-zinc-200">⬇ Raw Food CSV</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">MacroFactor items &amp; timestamps</div>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={handleExportRawGICSV}
+            className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-left text-xs transition-all active:scale-[0.98]"
+          >
+            <div className="font-semibold text-zinc-200">⬇ Raw GI Symptoms CSV</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">Bloating &amp; Bristol bowel logs</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportJSON}
+            className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-left text-xs transition-all active:scale-[0.98]"
+          >
+            <div className="font-semibold text-zinc-200">⬇ Full JSON Bundle</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">Complete raw backup</div>
+          </button>
+        </div>
+
         {exportNotice && (
-          <p className="text-center text-xs font-mono text-emerald-400 animate-fade-in">
-            {exportNotice}
+          <p className="text-center text-xs font-mono text-emerald-400 animate-fade-in pt-1">
+            ✓ {exportNotice}
           </p>
         )}
       </div>
@@ -201,7 +255,7 @@ export default function StudyPage() {
       {/* Scientific Blinding Notice */}
       <div className="p-4 rounded-xl border border-zinc-900 bg-zinc-950/40 text-center">
         <p className="text-[11px] text-zinc-400 font-mono leading-relaxed">
-          Active results and comparative scores are blinded during the experiment to avoid expectancy bias.
+          Active results and condition comparisons remain blinded during the study to avoid expectancy bias.
         </p>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { WearableSleepData, WearableProviderConfig } from "@/types/wearable";
+import { RawFoodRecord } from "@/types/nutrition";
 
 export interface WearableProvider {
   readonly id: string;
@@ -8,4 +9,5 @@ export interface WearableProvider {
   disconnect(): Promise<void>;
   isConnected(): boolean;
   fetchSleepData(targetDate: string): Promise<WearableSleepData | null>;
+  fetchNutritionData?(targetDate: string): Promise<RawFoodRecord[]>;
 }

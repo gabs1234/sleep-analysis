@@ -257,6 +257,109 @@ export function getTonightInstruction(
 }
 
 /**
+ * Calculates behavioral time lag intervals (e.g. work-to-lights-out, meal-to-lights-out)
+ * from recorded event timestamps, naps, caffeine, and raw nutrition logs.
+ */
+export function deriveBehavioralIntervals(record: Partial<NightRecord>): Record<string, number | undefined> {
+  const actions = record.evening_actions || [];
+  const findActionTime = (actionId: string): string | undefined => {
+    const act = actions.find((a) => a.action_id === actionId);
+    return act?.timestamp;
+  };
+
+  const workEndTime = findActionTime("work_end");
+  const screenEndTime = findActionTime("screen_end");
+  const winddownStartTime = findActionTime("winddown_start");
+  const inBedTime = findActionTime("in_bed_ready");
+  const lightsOutTime = findActionTime("lights_out") || record.wearable_data?.sleep_onset;
+
+  let workToLightsOut: number | undefined = undefined;
+  let screenToLightsOut: number | undefined = undefined;
+  let winddownDuration: number | undefined = undefined;
+  let inBedToLightsOut: number | undefined = undefined;
+  let mealToLightsOut: number | undefined = undefined;
+  let caffeineToLightsOut: number | undefined = undefined;
+  let napToLightsOut: number | undefined = undefined;
+
+  if (lightsOutTime) {
+    const lightsOutMs = new Date(lightsOutTime).getTime();
+
+    if (workEndTime) {
+      const workMs = new Date(workEndTime).getTime();
+      workToLightsOut = Math.round((lightsOutMs - workMs) / (1000 * 60));
+    }
+    if (screenEndTime) {
+      const screenMs = new Date(screenEndTime).getTime();
+      screenToLightsOut = Math.round((lightsOutMs - screenMs) / (1000 * 60));
+    }
+    if (inBedTime) {
+      const inBedMs = new Date(inBedTime).getTime();
+      inBedToLightsOut = Math.round((lightsOutMs - inBedMs) / (1000 * 60));
+    }
+
+    const mealEndTime = findActionTime("meal_end") || record.derived_nutrition?.final_caloric_timestamp;
+    if (mealEndTime) {
+      const mealMs = new Date(mealEndTime).getTime();
+      mealToLightsOut = Math.round((lightsOutMs - mealMs) / (1000 * 60));
+    }
+
+    // Caffeine interval
+    const caffeineEvents = record.caffeine_events || [];
+    let latestCaffTime = caffeineEvents.length > 0
+      ? caffeineEvents[caffeineEvents.length - 1]?.timestamp
+      : undefined;
+
+    if (!latestCaffTime && record.raw_food_records) {
+      const caffFoods = record.raw_food_records.filter((f) => (f.caffeine_mg || 0) > 5);
+      if (caffFoods.length > 0) {
+        latestCaffTime = caffFoods[caffFoods.length - 1]?.timestamp;
+      }
+    }
+
+    if (latestCaffTime) {
+      const caffMs = new Date(latestCaffTime).getTime();
+      caffeineToLightsOut = Math.round((lightsOutMs - caffMs) / (1000 * 60));
+    }
+
+    // Naps interval
+    const naps = record.naps || [];
+    if (naps.length > 0) {
+      const lastNap = naps[naps.length - 1];
+      if (lastNap?.end_time) {
+        const napEndMs = new Date(lastNap.end_time).getTime();
+        napToLightsOut = Math.round((lightsOutMs - napEndMs) / (1000 * 60));
+      }
+    }
+  }
+
+  if (winddownStartTime) {
+    const winddownStartMs = new Date(winddownStartTime).getTime();
+    const refEndMs = lightsOutTime
+      ? new Date(lightsOutTime).getTime()
+      : inBedTime
+      ? new Date(inBedTime).getTime()
+      : undefined;
+    if (refEndMs && refEndMs > winddownStartMs) {
+      winddownDuration = Math.round((refEndMs - winddownStartMs) / (1000 * 60));
+    }
+  }
+
+  const naps = record.naps || [];
+  const totalNapMinutes = naps.reduce((acc, n) => acc + (n.duration_minutes || 0), 0);
+
+  return {
+    work_to_lights_out_minutes: workToLightsOut,
+    screen_to_lights_out_minutes: screenToLightsOut,
+    winddown_duration_minutes: winddownDuration,
+    in_bed_to_lights_out_minutes: inBedToLightsOut,
+    meal_to_lights_out_minutes: mealToLightsOut,
+    caffeine_to_lights_out_minutes: caffeineToLightsOut,
+    nap_to_lights_out_minutes: napToLightsOut,
+    total_nap_minutes: totalNapMinutes > 0 ? totalNapMinutes : undefined,
+  };
+}
+
+/**
  * Initializes a new blank study state
  */
 export function initializeStudyState(config: ExperimentConfig): StudyState {

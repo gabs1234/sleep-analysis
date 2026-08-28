@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npx jiti scripts/verify-protocol-engine.ts && npx jiti scripts/test-edge-cases.ts"
+    "test": "npx jiti scripts/verify-protocol-engine.ts && npx jiti scripts/test-edge-cases.ts && npx jiti scripts/test-nutrition-and-gi.ts"
   },
   "dependencies": {
     "next": "16.3.3",

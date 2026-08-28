@@ -8,7 +8,7 @@ import {
 } from "@/lib/config/study-config";
 import { GoogleHealthProvider, GoogleHealthDiagnosticResult } from "@/lib/wearable/google-health";
 import { MockWearableProvider } from "@/lib/wearable/mock-wearable";
-import { formatDateKey } from "@/lib/engine/protocol-engine";
+import { formatDateKey, formatLocalTime } from "@/lib/engine/protocol-engine";
 import { importStudyJSON } from "@/lib/storage/data-export";
 
 export default function SettingsPage() {
@@ -58,7 +58,6 @@ export default function SettingsPage() {
       ...wearableConfig,
       client_id: idToUse,
     });
-    // Save client id so it persists
     updateWearableConfig({
       ...wearableConfig,
       client_id: idToUse,
@@ -103,11 +102,20 @@ export default function SettingsPage() {
         setDiagnosticResult(result);
       } else {
         const provider = new MockWearableProvider();
-        const data = await provider.fetchSleepData(todayKey);
+        const [data, nutrition] = await Promise.all([
+          provider.fetchSleepData(todayKey),
+          provider.fetchNutritionData(todayKey),
+        ]);
         setDiagnosticResult({
           success: true,
-          message: "Mock Wearable Simulator connected & generated test metrics successfully.",
+          message: "Mock Simulator connected. Generated synthetic sleep metrics and MacroFactor food records.",
           data,
+          nutritionRecords: nutrition,
+          discoveredDataStreams: [
+            "com.macrofactor.app (Nutrition)",
+            "Fitbit Charge 6 (Sleep & HR)",
+            "Google Health Connect (Vitals)",
+          ],
         });
       }
     } finally {
@@ -194,7 +202,6 @@ export default function SettingsPage() {
       }
     };
     reader.readAsText(file);
-    // Reset file input value
     e.target.value = "";
   };
 
@@ -249,7 +256,7 @@ export default function SettingsPage() {
   const currentRedirectUri = typeof window !== "undefined" ? window.location.origin + "/settings" : "";
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-8 space-y-8 animate-fade-in pb-16">
+    <div className="w-full max-w-md mx-auto px-4 py-8 space-y-8 animate-fade-in pb-20">
       {/* Header */}
       <div className="space-y-1">
         <div className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
@@ -266,14 +273,14 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* 1. Wearable Provider Setup */}
+      {/* 1. Wearable & Health Connect Data Sync */}
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-zinc-100">
-            Wearable / Smartwatch Data Sync
+            Health Connect &amp; Wearable Sync
           </h2>
           <p className="text-xs text-zinc-400">
-            Automated silent ingestion of sleep duration, HRV, and metrics.
+            Automated silent ingestion of sleep sessions, HRV, resting HR, and raw MacroFactor food logs.
           </p>
         </div>
 
@@ -316,9 +323,9 @@ export default function SettingsPage() {
                   : "border-zinc-900 bg-zinc-950 text-zinc-400 hover:bg-zinc-900"
               }`}
             >
-              <div className="font-semibold">Google Health</div>
+              <div className="font-semibold">Health Connect</div>
               <div className="text-[11px] text-zinc-400 mt-0.5">
-                Google Fit / Health REST
+                Google Health API (Fitbit/MacroFactor)
               </div>
             </button>
           </div>
@@ -332,7 +339,7 @@ export default function SettingsPage() {
                     <div className="flex items-center space-x-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                       <span className="text-xs font-semibold text-emerald-300">
-                        Google Health Connected ✓
+                        Health Connect Synced ✓
                       </span>
                     </div>
                     <span className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/20 px-2 py-0.5 rounded">
@@ -341,7 +348,7 @@ export default function SettingsPage() {
                   </div>
 
                   <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Sleep sessions, resting HR, and HRV will sync automatically in the background during morning check-ins.
+                    Sleep duration, sleep stages, HRV, resting HR, and timestamped MacroFactor food logs sync automatically in the background.
                   </p>
 
                   <div className="pt-1 flex items-center space-x-2">
@@ -438,14 +445,14 @@ export default function SettingsPage() {
                 {showSetupGuide && (
                   <div className="mt-3 p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 text-xs text-zinc-300 space-y-3 leading-relaxed">
                     <p className="font-semibold text-amber-300">
-                      Google Fit requires 3 quick settings in Google Cloud Console:
+                      Google Fit / Health Connect setup in Google Cloud Console:
                     </p>
                     <ol className="list-decimal pl-4 space-y-2 text-[11px]">
                       <li>
                         <strong>Enable Fitness API</strong>: Go to <code>console.cloud.google.com</code> &gt; <em>APIs &amp; Services</em> &gt; <em>Library</em> &gt; Search <code>Fitness API</code> &gt; Click <strong>Enable</strong>.
                       </li>
                       <li>
-                        <strong>Add Test User</strong>: In <em>OAuth consent screen</em>, ensure your Google email is added under <strong>Test Users</strong> (required while app is in testing status).
+                        <strong>Add Test User</strong>: In <em>OAuth consent screen</em>, ensure your Google email is added under <strong>Test Users</strong>.
                       </li>
                       <li>
                         <strong>Configure Web Client ID</strong>: In <em>Credentials</em> &gt; <em>OAuth 2.0 Client ID</em>:
@@ -463,7 +470,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* Test Wearable Sync Button & Diagnostic Results */}
+          {/* Test Wearable & Nutrition Sync Button & Diagnostic Results */}
           <div className="pt-2">
             <button
               type="button"
@@ -471,19 +478,19 @@ export default function SettingsPage() {
               disabled={testingWearable}
               className="w-full py-2.5 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-xs font-mono text-zinc-200 active:scale-[0.98] transition-all"
             >
-              {testingWearable ? "Querying provider..." : "⚡ Test Connection & Query Diagnostic"}
+              {testingWearable ? "Polling Health Connect streams..." : "⚡ Poll & Inspect Health Connect Streams"}
             </button>
 
             {diagnosticResult && (
               <div
-                className={`mt-3 p-3.5 rounded-xl border text-xs font-mono space-y-2 animate-fade-in ${
+                className={`mt-3 p-3.5 rounded-xl border text-xs font-mono space-y-3 animate-fade-in ${
                   diagnosticResult.success
                     ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
                     : "bg-rose-500/10 border-rose-500/20 text-rose-300"
                 }`}
               >
                 <div className="font-semibold flex items-center justify-between">
-                  <span>{diagnosticResult.success ? "✓ Connection Successful" : "✗ Connection Failed"}</span>
+                  <span>{diagnosticResult.success ? "✓ Streams Discovered" : "✗ Connection Failed"}</span>
                   {diagnosticResult.statusCode && (
                     <span className="text-[10px] opacity-70">HTTP {diagnosticResult.statusCode}</span>
                   )}
@@ -491,16 +498,60 @@ export default function SettingsPage() {
                 <div className="text-[11px] leading-relaxed opacity-90">
                   {diagnosticResult.message}
                 </div>
+
+                {/* Discovered streams list */}
+                {diagnosticResult.discoveredDataStreams && diagnosticResult.discoveredDataStreams.length > 0 && (
+                  <div className="pt-2 border-t border-zinc-800/60 space-y-1 text-zinc-300">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                      Discovered Data Sources:
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {diagnosticResult.discoveredDataStreams.map((s, idx) => (
+                        <span key={idx} className="px-2 py-0.5 rounded bg-black/40 border border-zinc-800 text-[10px]">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sleep Metrics Preview */}
                 {diagnosticResult.data && (
-                  <div className="pt-1.5 border-t border-zinc-800/40 text-[10px] space-y-1 text-zinc-300">
-                    <div>Duration: {diagnosticResult.data.duration_minutes} min</div>
-                    <div>Efficiency: {diagnosticResult.data.sleep_efficiency_pct}%</div>
+                  <div className="pt-2 border-t border-zinc-800/60 text-[10px] space-y-1 text-zinc-300">
+                    <div className="font-bold uppercase tracking-wider text-emerald-400">Sleep &amp; Physiological Response:</div>
+                    <div>Duration: {diagnosticResult.data.duration_minutes} min (WASO: {diagnosticResult.data.waso_minutes || 0}m, Efficiency: {diagnosticResult.data.sleep_efficiency_pct}%)</div>
                     {diagnosticResult.data.resting_hr && (
-                      <div>Resting HR: {diagnosticResult.data.resting_hr} bpm</div>
+                      <div>Resting HR: {diagnosticResult.data.resting_hr} bpm | Avg Sleep HR: {diagnosticResult.data.avg_hr} bpm | HRV: {diagnosticResult.data.hrv_rmssd} ms</div>
                     )}
-                    {diagnosticResult.data.avg_hr && (
-                      <div>Avg Sleep HR: {diagnosticResult.data.avg_hr} bpm</div>
+                    {diagnosticResult.data.steps !== undefined && (
+                      <div>Daily Steps: {diagnosticResult.data.steps}</div>
                     )}
+                  </div>
+                )}
+
+                {/* Raw Nutrition Records Preview */}
+                {diagnosticResult.nutritionRecords && diagnosticResult.nutritionRecords.length > 0 && (
+                  <div className="pt-2 border-t border-zinc-800/60 text-[10px] space-y-1.5 text-zinc-300">
+                    <div className="font-bold uppercase tracking-wider text-emerald-400">
+                      Raw Food Stream ({diagnosticResult.nutritionRecords.length} items logged):
+                    </div>
+                    <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                      {diagnosticResult.nutritionRecords.map((item) => (
+                        <div key={item.id} className="p-1.5 rounded bg-black/40 border border-zinc-800 text-[10px] space-y-0.5">
+                          <div className="flex items-center justify-between text-zinc-200 font-semibold">
+                            <span>{item.name}</span>
+                            <span className="text-emerald-400">{item.calories} kcal</span>
+                          </div>
+                          <div className="text-zinc-400 text-[9px] flex items-center space-x-2">
+                            <span>{formatLocalTime(item.timestamp)}</span>
+                            <span>•</span>
+                            <span>P: {item.protein_g}g | C: {item.carbs_g}g | F: {item.fat_g}g</span>
+                            {item.fiber_g ? <span>| Fiber: {item.fiber_g}g</span> : null}
+                            {item.caffeine_mg ? <span className="text-amber-400">| Caff: {item.caffeine_mg}mg</span> : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -546,7 +597,6 @@ export default function SettingsPage() {
             <span className="text-[10px] font-mono text-zinc-400">V1 &amp; CUSTOM COMPATIBLE</span>
           </div>
 
-          {/* File Picker Button */}
           <div>
             <input
               type="file"
@@ -563,7 +613,6 @@ export default function SettingsPage() {
             </label>
           </div>
 
-          {/* Textarea Fallback */}
           <div className="space-y-1.5 pt-1">
             <div className="text-[11px] font-mono text-zinc-400">
               Or paste JSON directly:
@@ -605,7 +654,7 @@ export default function SettingsPage() {
             Data Backup &amp; Device Migration
           </h2>
           <p className="text-xs text-zinc-400">
-            Your data is stored locally on this device. Back up anytime or restore to a new phone.
+            All raw records (nutrition, GI symptoms, timestamps, wearable vitals) are stored locally on this device.
           </p>
         </div>
 
@@ -630,10 +679,10 @@ export default function SettingsPage() {
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-zinc-100">
-            Simulation & Testing Tools
+            Simulation &amp; Testing Tools
           </h2>
           <p className="text-xs text-zinc-400">
-            Simulate study nights and verify automatic phase progression without waiting weeks.
+            Simulate study nights and verify automatic phase progression and data models without waiting weeks.
           </p>
         </div>
 
@@ -655,7 +704,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* 4. Danger Zone: Reset */}
+      {/* 5. Danger Zone: Reset */}
       <div className="p-5 rounded-2xl border border-rose-950/40 bg-zinc-950 space-y-3">
         <h2 className="text-sm font-semibold text-rose-400">
           Reset Study State

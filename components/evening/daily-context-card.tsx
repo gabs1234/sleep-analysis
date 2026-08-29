@@ -36,6 +36,7 @@ const QUESTIONS = [
     prompt: "Work Satisfaction",
     question: "How did work feel today?",
     options: [
+      { val: -1, label: "N/A", desc: "No work" },
       { val: 0, label: "0", desc: "Bad" },
       { val: 1, label: "1", desc: "Frustrating" },
       { val: 2, label: "2", desc: "Fine" },
@@ -129,7 +130,15 @@ export function DailyContextCard({ initialData, onSave }: DailyContextCardProps)
                     : "Tap rating"}
                 </span>
               </div>
-              <div className={`grid gap-1.5 ${q.options.length === 3 ? "grid-cols-3" : "grid-cols-4"}`}>
+              <div
+                className={`grid gap-1.5 ${
+                  q.options.length === 3
+                    ? "grid-cols-3"
+                    : q.options.length === 5
+                    ? "grid-cols-5"
+                    : "grid-cols-4"
+                }`}
+              >
                 {q.options.map((opt) => {
                   const isSelected = currentVal === opt.val;
                   return (
@@ -143,7 +152,9 @@ export function DailyContextCard({ initialData, onSave }: DailyContextCardProps)
                           : "bg-zinc-950 border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white"
                       }`}
                     >
-                      <div className="text-xs font-semibold">{opt.desc}</div>
+                      <div className="text-[11px] sm:text-xs font-semibold leading-tight break-words">
+                        {opt.desc}
+                      </div>
                     </button>
                   );
                 })}

@@ -54,7 +54,7 @@ export interface DailySubjectiveContext {
   completed_at?: string; // ISO timestamp
   overall_stress?: number; // 0: Relaxed, 1: Mild, 2: Stressed, 3: Very stressed
   work_stress?: number; // 0: Calm, 1: Mild, 2: Stressed, 3: Overwhelming
-  work_satisfaction?: number; // 0: Bad, 1: Frustrating, 2: Fine, 3: Satisfying
+  work_satisfaction?: number; // -1: No work, 0: Bad, 1: Frustrating, 2: Fine, 3: Satisfying
   meaningful_social_contact?: number; // 0: None, 1: Brief, 2: Some, 3: Substantial
   routine_adherence?: number; // 0: Fell apart, 1: Partial, 2: Mostly, 3: Complete
   eating_out_of_control?: number; // 0: No, 1: Somewhat, 2: Yes (mirrored or supplemented in fallback)

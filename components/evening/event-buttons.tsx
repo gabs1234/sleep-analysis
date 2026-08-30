@@ -142,17 +142,31 @@ export function EventButtons() {
                       className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-xs hover:bg-emerald-500/20 transition-all"
                       title="Tap to adjust timestamp"
                     >
-                      <span>✓ {formatLocalTime(latestLog.timestamp)}</span>
+                      <span>
+                        ✓ {latestLog.timestamp === "NO_WORK" ? "No work today" : formatLocalTime(latestLog.timestamp)}
+                      </span>
                       <span className="text-[10px] text-emerald-500/70">✏</span>
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => logEveningAction(act.id, act.label)}
-                      className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono text-xs font-medium active:scale-[0.98] transition-all"
-                    >
-                      + Log now
-                    </button>
+                    <div className="flex items-center space-x-1">
+                      <button
+                        type="button"
+                        onClick={() => logEveningAction(act.id, act.label)}
+                        className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono text-xs font-medium active:scale-[0.98] transition-all"
+                      >
+                        + Log now
+                      </button>
+                      {act.id === "work_end" && (
+                        <button
+                          type="button"
+                          onClick={() => logEveningAction("work_end", "No work today", "NO_WORK")}
+                          className="px-2 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-mono text-[11px] transition-all"
+                          title="Mark no work done today"
+                        >
+                          Off
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   <button
@@ -237,15 +251,27 @@ export function EventButtons() {
                       type="time"
                       value={customTimeInput}
                       onChange={(e) => setCustomTimeInput(e.target.value)}
-                      className="flex-1 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-100 focus:outline-none focus:border-zinc-600"
+                      className="px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-100 flex-1 focus:outline-none focus:border-zinc-600"
                     />
                     <button
                       type="button"
                       onClick={() => handleCustomTimeSubmit(act.id, act.label)}
-                      className="px-3 py-1.5 rounded-lg bg-zinc-200 text-black font-semibold font-mono text-xs hover:bg-white transition-all"
+                      className="px-3 py-1.5 rounded-lg bg-zinc-200 hover:bg-white text-black font-semibold text-xs font-mono transition-all"
                     >
                       Set time
                     </button>
+                    {act.id === "work_end" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          logEveningAction("work_end", "No work today", "NO_WORK");
+                          setActivePickerId(null);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-amber-300 text-xs font-mono transition-all"
+                      >
+                        No work today
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

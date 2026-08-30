@@ -284,9 +284,11 @@ export function deriveBehavioralIntervals(record: Partial<NightRecord>): Record<
   if (lightsOutTime) {
     const lightsOutMs = new Date(lightsOutTime).getTime();
 
-    if (workEndTime) {
+    if (workEndTime && workEndTime !== "NO_WORK") {
       const workMs = new Date(workEndTime).getTime();
-      workToLightsOut = Math.round((lightsOutMs - workMs) / (1000 * 60));
+      if (!isNaN(workMs)) {
+        workToLightsOut = Math.round((lightsOutMs - workMs) / (1000 * 60));
+      }
     }
     if (screenEndTime) {
       const screenMs = new Date(screenEndTime).getTime();

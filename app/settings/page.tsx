@@ -28,6 +28,7 @@ export default function SettingsPage() {
     preferences,
     updatePreferences,
     persistenceStatus,
+    syncOutboxNow,
     resetStudy,
     simulateAddCompletedNight,
   } = useStudySession();
@@ -51,10 +52,25 @@ export default function SettingsPage() {
   const [testingWearable, setTestingWearable] = useState(false);
   const [diagnosticResult, setDiagnosticResult] = useState<GoogleHealthDiagnosticResult | null>(null);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
+  const [hubSyncNotice, setHubSyncNotice] = useState<string | null>(null);
 
   const isGoogleConnected = Boolean(
     wearableConfig.provider_type === "google_health" && wearableConfig.access_token
   );
+
+  const handleHubSync = async () => {
+    const result = await syncOutboxNow();
+    setHubSyncNotice(
+      result.outcome === "error"
+        ? result.error || "Hub sync failed"
+        : result.outcome === "offline"
+          ? "Offline — queued entries remain on this device"
+          : result.acknowledged > 0
+            ? `Synced ${result.acknowledged} queued change${result.acknowledged === 1 ? "" : "s"}`
+            : "Hub is reachable; nothing is waiting"
+    );
+    setTimeout(() => setHubSyncNotice(null), 5000);
+  };
 
   const activeClientId = googleClientId || wearableConfig.client_id || "";
 
@@ -373,9 +389,25 @@ export default function SettingsPage() {
         {persistenceStatus.error && (
           <p className="text-[11px] text-rose-300">IndexedDB issue: {persistenceStatus.error}. New changes are being mirrored to the fallback store.</p>
         )}
-        <p className="text-[11px] text-zinc-500">
-          Nothing is transmitted yet. Once the hub is configured, acknowledged mutations can be removed safely from this outbox.
-        </p>
+        {persistenceStatus.hub_sync_error && (
+          <p className="text-[11px] text-rose-300">Hub sync: {persistenceStatus.hub_sync_error}</p>
+        )}
+        {hubSyncNotice && <p className="text-[11px] text-zinc-300">{hubSyncNotice}</p>}
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] text-zinc-500">
+            {persistenceStatus.last_hub_sync_at
+              ? `Last hub contact ${formatLocalTime(persistenceStatus.last_hub_sync_at)}`
+              : "Waiting for first contact with the private Pi hub."}
+          </p>
+          <button
+            type="button"
+            onClick={handleHubSync}
+            disabled={persistenceStatus.hub_sync_phase === "syncing" || persistenceStatus.backend !== "indexeddb"}
+            className="shrink-0 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-[11px] font-mono text-zinc-200 disabled:opacity-40"
+          >
+            {persistenceStatus.hub_sync_phase === "syncing" ? "Syncing…" : "Sync now"}
+          </button>
+        </div>
       </div>
 
       {/* 1. Wearable & Health Connect Data Sync */}

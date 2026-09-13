@@ -32,6 +32,7 @@ import {
 import { WearableProviderConfig } from "@/types/wearable";
 import { UserPreferences } from "@/types/preferences";
 import { PersistenceStatus } from "@/types/persistence";
+import { flushHubOutbox, HubFlushResult } from "@/lib/storage/hub-sync";
 import {
   formatDateKey,
   calculateStudyState,
@@ -112,6 +113,7 @@ interface StudyContextType {
   updatePreferences: (preferences: UserPreferences) => void;
   resetStudy: () => void;
   simulateAddCompletedNight: (overrides?: Partial<MorningAssessment>) => Promise<void>;
+  syncOutboxNow: () => Promise<HubFlushResult>;
 }
 
 const StudyContext = createContext<StudyContextType | undefined>(undefined);
@@ -150,6 +152,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     phase: "loading",
     pending_mutations: 0,
     migrated_from_local_storage: false,
+    hub_sync_phase: "idle",
   });
   const [timeTick, setTimeTick] = useState(0);
   const initialSnapshot = useRef<BrowserStorageSnapshot>({
@@ -202,6 +205,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           pending_mutations: 0,
           last_saved_at: new Date().toISOString(),
           migrated_from_local_storage: false,
+          hub_sync_phase: "error",
+          hub_sync_error: "IndexedDB is unavailable, so hub sync is paused",
           error: error instanceof Error ? error.message : "IndexedDB initialization failed",
         });
         setStorageReady(true);
@@ -211,6 +216,29 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [clientReady]);
+
+  const syncOutboxNow = useCallback(async (): Promise<HubFlushResult> => {
+    setPersistenceStatus((current) => ({
+      ...current,
+      hub_sync_phase: typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "syncing",
+      hub_sync_error: undefined,
+    }));
+    const result = await flushHubOutbox();
+    setPersistenceStatus((current) => ({
+      ...current,
+      pending_mutations: result.remaining,
+      hub_sync_phase: result.outcome === "error"
+        ? "error"
+        : result.outcome === "offline"
+          ? "offline"
+          : "idle",
+      last_hub_sync_at: result.outcome === "synced" || result.outcome === "idle"
+        ? new Date().toISOString()
+        : current.last_hub_sync_at,
+      hub_sync_error: result.error,
+    }));
+    return result;
+  }, []);
 
   const trackPersistence = useCallback(
     (operation: () => Promise<PersistenceStatus>, fallback: () => void) => {
@@ -236,6 +264,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
               usage_bytes: current.usage_bytes,
               quota_bytes: current.quota_bytes,
             }));
+            void syncOutboxNow();
           })
           .catch((error) => {
             console.error("IndexedDB write failed; preserving data in localStorage:", error);
@@ -250,8 +279,25 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           });
       });
     },
-    [persistenceStatus.backend, storageReady]
+    [persistenceStatus.backend, storageReady, syncOutboxNow]
   );
+
+  useEffect(() => {
+    if (!storageReady || persistenceStatus.backend !== "indexeddb") return;
+    const sync = () => void syncOutboxNow();
+    const syncWhenVisible = () => {
+      if (document.visibilityState === "visible") sync();
+    };
+    sync();
+    window.addEventListener("online", sync);
+    document.addEventListener("visibilitychange", syncWhenVisible);
+    const timer = window.setInterval(sync, 60_000);
+    return () => {
+      window.removeEventListener("online", sync);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+      window.clearInterval(timer);
+    };
+  }, [persistenceStatus.backend, storageReady, syncOutboxNow]);
 
   useEffect(() => {
     trackPersistence(() => persistStudyState(state), () => saveStoredStudyState(state));
@@ -1368,6 +1414,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         updatePreferences,
         resetStudy,
         simulateAddCompletedNight,
+        syncOutboxNow,
       }}
     >
       {children}

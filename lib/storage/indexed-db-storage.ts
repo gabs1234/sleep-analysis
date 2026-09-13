@@ -115,10 +115,11 @@ function openDatabase(): Promise<IDBDatabase> {
 async function readDocument<T>(key: DocumentKey): Promise<StoredDocument<T> | undefined> {
   const database = await openDatabase();
   const transaction = database.transaction(DOCUMENT_STORE, "readonly");
+  const completed = transactionComplete(transaction);
   const result = await requestResult(
     transaction.objectStore(DOCUMENT_STORE).get(key) as IDBRequest<StoredDocument<T> | undefined>
   );
-  await transactionComplete(transaction);
+  await completed;
   return result;
 }
 
@@ -133,8 +134,9 @@ function putMutations(store: IDBObjectStore, mutations: SyncMutation[]): void {
 async function pendingMutationCount(database?: IDBDatabase): Promise<number> {
   const activeDatabase = database || (await openDatabase());
   const transaction = activeDatabase.transaction(OUTBOX_STORE, "readonly");
+  const completed = transactionComplete(transaction);
   const count = await requestResult(transaction.objectStore(OUTBOX_STORE).count());
-  await transactionComplete(transaction);
+  await completed;
   return count;
 }
 
@@ -145,7 +147,7 @@ async function storageEstimate(): Promise<{
 }> {
   if (typeof navigator === "undefined" || !navigator.storage) return {};
   const [persistent, estimate] = await Promise.all([
-    navigator.storage.persist?.().catch(() => false),
+    navigator.storage.persisted?.().catch(() => false),
     navigator.storage.estimate?.().catch(() => undefined),
   ]);
   return {
@@ -186,6 +188,7 @@ export async function initializeBrowserStorage(
 
     if (!hasIndexedData) {
       const transaction = database.transaction([DOCUMENT_STORE, OUTBOX_STORE], "readwrite");
+      const completed = transactionComplete(transaction);
       const documents = transaction.objectStore(DOCUMENT_STORE);
       const outbox = transaction.objectStore(OUTBOX_STORE);
       putDocument(documents, "study_config", snapshot.config, now);
@@ -206,7 +209,7 @@ export async function initializeBrowserStorage(
           ...buildStudyStateMutations(undefined, snapshot.state, now, createMutationId, clientIdentity.id),
         ]);
       }
-      await transactionComplete(transaction);
+      await completed;
     } else {
       const missingDocuments: Array<[DocumentKey, unknown]> = [];
       if (!storedConfig) missingDocuments.push(["study_config", snapshot.config]);
@@ -219,9 +222,10 @@ export async function initializeBrowserStorage(
       if (!storedIdentity) missingDocuments.push(["client_identity", clientIdentity]);
       if (missingDocuments.length > 0) {
         const transaction = database.transaction(DOCUMENT_STORE, "readwrite");
+        const completed = transactionComplete(transaction);
         const documents = transaction.objectStore(DOCUMENT_STORE);
         for (const [key, value] of missingDocuments) putDocument(documents, key, value, now);
-        await transactionComplete(transaction);
+        await completed;
       }
     }
 
@@ -258,9 +262,10 @@ async function writeDocumentWithMutations<T>(
   const database = await openDatabase();
   const now = new Date().toISOString();
   const transaction = database.transaction([DOCUMENT_STORE, OUTBOX_STORE], "readwrite");
+  const completed = transactionComplete(transaction);
   putDocument(transaction.objectStore(DOCUMENT_STORE), key, value, now);
   putMutations(transaction.objectStore(OUTBOX_STORE), mutations);
-  await transactionComplete(transaction);
+  await completed;
   const pending = await pendingMutationCount(database);
   const migration = await readDocument<MigrationInfo>("migration_info");
   return {
@@ -316,8 +321,9 @@ export function persistWearableConfig(config: WearableProviderConfig): Promise<P
 export async function listOutboxMutations(limit = 100): Promise<SyncMutation[]> {
   const database = await openDatabase();
   const transaction = database.transaction(OUTBOX_STORE, "readonly");
+  const completed = transactionComplete(transaction);
   const values = await requestResult(transaction.objectStore(OUTBOX_STORE).getAll()) as SyncMutation[];
-  await transactionComplete(transaction);
+  await completed;
   return values
     .sort((left, right) => left.queued_at.localeCompare(right.queued_at))
     .slice(0, limit);
@@ -327,12 +333,14 @@ export function acknowledgeOutboxMutation(outboxKey: string, mutationId: string)
   return serializeWrite(async () => {
     const database = await openDatabase();
     const readTransaction = database.transaction(OUTBOX_STORE, "readonly");
+    const readCompleted = transactionComplete(readTransaction);
     const existing = await requestResult(readTransaction.objectStore(OUTBOX_STORE).get(outboxKey)) as SyncMutation | undefined;
-    await transactionComplete(readTransaction);
+    await readCompleted;
     if (!existing || existing.mutation_id !== mutationId) return false;
     const transaction = database.transaction(OUTBOX_STORE, "readwrite");
+    const completed = transactionComplete(transaction);
     transaction.objectStore(OUTBOX_STORE).delete(outboxKey);
-    await transactionComplete(transaction);
+    await completed;
     return true;
   });
 }
@@ -345,10 +353,11 @@ export function markOutboxMutationFailed(
   return serializeWrite(async () => {
     const database = await openDatabase();
     const transaction = database.transaction(OUTBOX_STORE, "readwrite");
+    const completed = transactionComplete(transaction);
     const store = transaction.objectStore(OUTBOX_STORE);
     const existing = await requestResult(store.get(outboxKey)) as SyncMutation | undefined;
     if (!existing || existing.mutation_id !== mutationId) {
-      await transactionComplete(transaction);
+      await completed;
       return false;
     }
     store.put({
@@ -358,7 +367,7 @@ export function markOutboxMutationFailed(
       last_attempt_at: new Date().toISOString(),
       last_error: error,
     } satisfies SyncMutation);
-    await transactionComplete(transaction);
+    await completed;
     return true;
   });
 }

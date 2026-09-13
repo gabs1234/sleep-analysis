@@ -1,5 +1,6 @@
 export type PersistenceBackend = "indexeddb" | "localstorage";
 export type PersistencePhase = "loading" | "ready" | "saving" | "error";
+export type HubSyncPhase = "idle" | "syncing" | "offline" | "error";
 
 export type SyncEntityType =
   | "study"
@@ -42,4 +43,7 @@ export interface PersistenceStatus {
   usage_bytes?: number;
   quota_bytes?: number;
   error?: string;
+  hub_sync_phase?: HubSyncPhase;
+  last_hub_sync_at?: string;
+  hub_sync_error?: string;
 }

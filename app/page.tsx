@@ -3,12 +3,15 @@
 import React, { useState } from "react";
 import { useStudySession } from "@/context/study-context";
 import { MorningCheckin } from "@/components/morning/morning-checkin";
+import { MorningRepairCard } from "@/components/morning/morning-repair-card";
 import { EveningQuestionnaire } from "@/components/evening/evening-questionnaire";
+import { EveningPlanCard } from "@/components/evening/evening-plan-card";
 import { PhaseTransitionCard } from "@/components/study/phase-transition-card";
 import { EventButtons } from "@/components/evening/event-buttons";
 import { GITracker } from "@/components/gi/gi-tracker";
-import { getActiveNightDateKey } from "@/lib/engine/time-context";
-import { formatLocalTime } from "@/lib/engine/protocol-engine";
+import { DailyRoutineCard } from "@/components/routine/daily-routine-card";
+import { ExternalDataCard } from "@/components/data/external-data-card";
+import { formatDateKey, formatLocalTime } from "@/lib/engine/protocol-engine";
 
 export default function HomePage() {
   const {
@@ -22,43 +25,28 @@ export default function HomePage() {
     logBloatingEvent,
     logBowelMovement,
   } = useStudySession();
-
   const [activeFlow, setActiveFlow] = useState<"morning" | "evening" | null>(null);
-
-  const activeNightKey = getActiveNightDateKey();
-  const activeRecord = state.records.find((r) => r.date === activeNightKey);
-
+  const activeNightKey = viewContext.todayDateKey;
+  const activeRecord = state.records.find((record) => record.date === activeNightKey);
+  const tonightDateKey = formatDateKey();
+  const tonightRecord = state.records.find((record) => record.date === tonightDateKey);
+  const isMorning = viewContext.isMorningWindow;
   const isMorningDone = Boolean(activeRecord?.morning_assessment?.completed_at);
   const isEveningDone = Boolean(
-    activeRecord?.daily_context?.completed_at || activeRecord?.pre_sleep_state?.completed_at
+    activeRecord?.daily_context?.completed_at &&
+    activeRecord?.pre_sleep_state?.completed_at &&
+    activeRecord?.food_log_completeness
   );
   const isProtocolAcknowledged = Boolean(activeRecord?.evening_acknowledged_at);
 
   if (!isReady) {
-    return (
-      <div className="flex-1 flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-zinc-700 border-t-zinc-200 rounded-full animate-spin" />
-      </div>
-    );
+    return <div className="flex-1 flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 border-2 border-zinc-700 border-t-zinc-200 rounded-full animate-spin" /></div>;
   }
 
-  // Phase transition state
-  if (viewContext.context === "phase_transition") {
-    return <PhaseTransitionCard message={viewContext.phaseTransitionMessage} />;
-  }
-
-  // Active Flow: Morning Questionnaire
   if (activeFlow === "morning") {
-    return (
-      <MorningCheckin
-        initialData={activeRecord?.morning_assessment}
-        onComplete={() => setActiveFlow(null)}
-        onClose={() => setActiveFlow(null)}
-      />
-    );
+    return <MorningCheckin initialData={activeRecord?.morning_assessment} onComplete={() => setActiveFlow(null)} onClose={() => setActiveFlow(null)} />;
   }
 
-  // Active Flow: Evening Questionnaire
   if (activeFlow === "evening") {
     return (
       <EveningQuestionnaire
@@ -73,176 +61,63 @@ export default function HomePage() {
     );
   }
 
-  // Main Dashboard
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-6 space-y-6 animate-fade-in pb-24">
-      {/* Header & Phase Progress */}
+    <main className="w-full max-w-md mx-auto px-4 py-6 space-y-6 animate-fade-in pb-24">
       <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
-        <span className="uppercase tracking-wider font-semibold text-zinc-300">
-          {activePhase.name}
-        </span>
-        <span>
-          VALID {currentPhaseProgress.validNightsLogged} / {activePhase.valid_nights_required}
-        </span>
+        <span className="uppercase tracking-wider font-semibold text-zinc-300">{isMorning ? "Last night" : activePhase.name}</span>
+        <span>VALID {currentPhaseProgress.validNightsLogged} / {activePhase.valid_nights_required}</span>
       </div>
 
-      {/* Tonight's Instruction & Protocol Card */}
-      <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-3.5">
-        <div className="flex items-center justify-between">
-          <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
-            TONIGHT&apos;S PROTOCOL (NIGHT {tonightInstruction.nightNumberInPhase})
-          </div>
-          {isProtocolAcknowledged && (
-            <span className="text-[11px] font-mono text-emerald-400">✓ Ready</span>
-          )}
-        </div>
+      <DailyRoutineCard />
 
-        <div className="space-y-1">
-          <h2 className="text-xl font-bold tracking-tight text-zinc-100 leading-snug">
-            {tonightInstruction.primaryInstruction}
-          </h2>
-          {tonightInstruction.secondaryInstruction && (
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              {tonightInstruction.secondaryInstruction}
-            </p>
-          )}
-        </div>
-
-        <button
-          type="button"
-          onClick={acknowledgeEveningProtocol}
-          className={`w-full py-2.5 rounded-xl text-xs font-semibold transition-all active:scale-[0.98] ${
-            isProtocolAcknowledged
-              ? "bg-zinc-900 border border-emerald-500/30 text-emerald-400"
-              : "bg-zinc-100 text-black hover:bg-white"
-          }`}
-        >
-          {isProtocolAcknowledged ? "✓ Understood & Ready" : "Acknowledge Instruction"}
-        </button>
-      </div>
-
-      {/* Daily Checkpoints / Sequential Questionnaires */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
-          <span>DAILY CHECKPOINTS</span>
-          <span>SEQUENTIAL CHECK-INS</span>
-        </div>
-
-        {/* 1. Morning Check-in Card */}
-        <div
-          className={`p-4 rounded-2xl border transition-all ${
-            isMorningDone
-              ? "border-zinc-900 bg-zinc-950"
-              : "border-amber-500/30 bg-amber-500/5 shadow-sm"
-          }`}
-        >
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <span className="text-base">🌅</span>
-                <span className="text-sm font-semibold text-zinc-100">
-                  Morning Check-in
-                </span>
-                {isMorningDone && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    Done {activeRecord?.morning_assessment?.completed_at ? formatLocalTime(activeRecord.morning_assessment.completed_at) : ""}
-                  </span>
-                )}
+      {viewContext.context === "phase_transition" ? (
+        <PhaseTransitionCard message={viewContext.phaseTransitionMessage} />
+      ) : isMorning ? (
+        <>
+          <section className={`p-4 rounded-2xl border ${isMorningDone ? "border-zinc-900 bg-zinc-950" : "border-amber-500/30 bg-amber-500/5"}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2"><span>🌅</span><h1 className="text-sm font-semibold text-zinc-100">Morning check-in</h1>{isMorningDone && <span className="text-[10px] font-mono text-emerald-400">Done {formatLocalTime(activeRecord?.morning_assessment?.completed_at)}</span>}</div>
+                <p className="text-xs text-zinc-400 mt-2">Capture how you feel before reviewing sensor data. The night is filed under {activeNightKey}.</p>
               </div>
-              <p className="text-xs text-zinc-400">
-                {isMorningDone
-                  ? `Readiness: ${
-                      ["Wrecked", "Sluggish", "Ready", "Sharp"][
-                        activeRecord?.morning_assessment?.readiness ?? 2
-                      ]
-                    } • Quality: ${
-                      ["Bad", "Poor", "Good", "Excellent"][
-                        activeRecord?.morning_assessment?.sleep_quality ?? 2
-                      ]
-                    }`
-                  : "Rate wakeup readiness, sleep quality, and protocol adherence (~4 taps)."}
-              </p>
             </div>
-          </div>
-
-          <div className="pt-3">
-            <button
-              type="button"
-              onClick={() => setActiveFlow("morning")}
-              className={`w-full py-2.5 rounded-xl font-semibold text-xs transition-all active:scale-[0.98] ${
-                isMorningDone
-                  ? "bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                  : "bg-amber-400 text-black hover:bg-amber-300 font-bold shadow"
-              }`}
-            >
-              {isMorningDone ? "Review / Edit Morning Answers ✏" : "Start Morning Check-in →"}
+            <button type="button" onClick={() => setActiveFlow("morning")} className={`w-full mt-3 py-3 rounded-xl text-xs font-semibold ${isMorningDone ? "bg-zinc-900 border border-zinc-800 text-zinc-200" : "bg-amber-300 text-black"}`}>
+              {isMorningDone ? "Review / edit answers" : "Start morning check-in"}
             </button>
-          </div>
-        </div>
+          </section>
 
-        {/* 2. Evening Check-in Card */}
-        <div
-          className={`p-4 rounded-2xl border transition-all ${
-            isEveningDone
-              ? "border-zinc-900 bg-zinc-950"
-              : "border-zinc-800 bg-zinc-950"
-          }`}
-        >
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <span className="text-base">🌙</span>
-                <span className="text-sm font-semibold text-zinc-100">
-                  Evening Check-in
-                </span>
-                {isEveningDone && (
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    Done {activeRecord?.daily_context?.completed_at ? formatLocalTime(activeRecord.daily_context.completed_at) : ""}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-zinc-400">
-                {isEveningDone
-                  ? `Stress: ${
-                      ["Relaxed", "Mild", "Stressed", "Very stressed"][
-                        activeRecord?.daily_context?.overall_stress ?? 1
-                      ]
-                    } • Sleepiness: ${
-                      ["Not sleepy", "Slightly", "Sleepy", "Struggling"][
-                        activeRecord?.pre_sleep_state?.sleepiness ?? 2
-                      ]
-                    }`
-                  : "Rate daily stress, work satisfaction, pre-sleep state, and food log (~8 taps)."}
-              </p>
+          <MorningRepairCard date={activeNightKey} record={activeRecord} />
+          {isMorningDone && <ExternalDataCard date={activeNightKey} record={activeRecord} />}
+          {isMorningDone && <EveningPlanCard date={tonightDateKey} record={tonightRecord} />}
+        </>
+      ) : (
+        <>
+          <section className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Tonight&apos;s protocol · night {tonightInstruction.nightNumberInPhase}</div>
+              {isProtocolAcknowledged && <span className="text-[11px] font-mono text-emerald-400">Ready ✓</span>}
             </div>
-          </div>
-
-          <div className="pt-3">
-            <button
-              type="button"
-              onClick={() => setActiveFlow("evening")}
-              className={`w-full py-2.5 rounded-xl font-semibold text-xs transition-all active:scale-[0.98] ${
-                isEveningDone
-                  ? "bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                  : "bg-zinc-100 text-black hover:bg-white font-bold"
-              }`}
-            >
-              {isEveningDone ? "Review / Edit Evening Answers ✏" : "Start Evening Check-in →"}
+            <h1 className="text-xl font-bold tracking-tight text-zinc-100 leading-snug">{tonightInstruction.primaryInstruction}</h1>
+            {tonightInstruction.secondaryInstruction && <p className="text-xs text-zinc-400">{tonightInstruction.secondaryInstruction}</p>}
+            <button type="button" onClick={acknowledgeEveningProtocol} className={`w-full py-2.5 rounded-xl text-xs font-semibold ${isProtocolAcknowledged ? "bg-zinc-900 border border-emerald-500/30 text-emerald-400" : "bg-zinc-100 text-black"}`}>
+              {isProtocolAcknowledged ? "Understood & ready ✓" : "Acknowledge instruction"}
             </button>
-          </div>
-        </div>
-      </div>
+          </section>
 
-      {/* Multi-Log Tool 1: Daytime Event-Driven GI Symptom Tracking */}
-      <GITracker
-        bloatingEvents={activeRecord?.bloating_events}
-        bowelMovements={activeRecord?.bowel_movements}
-        onLogBloating={logBloatingEvent}
-        onLogBowelMovement={logBowelMovement}
-      />
+          <EveningPlanCard date={activeNightKey} record={activeRecord} />
 
-      {/* Multi-Log Tool 2: Timestamp Event Buttons & Quick Actions */}
-      <EventButtons />
-    </div>
+          <section className={`p-4 rounded-2xl border ${isEveningDone ? "border-zinc-900 bg-zinc-950" : "border-zinc-800 bg-zinc-950"}`}>
+            <div className="flex items-center gap-2"><span>🌙</span><h2 className="text-sm font-semibold text-zinc-100">Evening check-in</h2>{isEveningDone && <span className="text-[10px] font-mono text-emerald-400">Complete ✓</span>}</div>
+            <p className="text-xs text-zinc-400 mt-2">Day context, conditional work questions, pre-sleep state, and food-log completeness.</p>
+            <button type="button" onClick={() => setActiveFlow("evening")} className="w-full mt-3 py-3 rounded-xl bg-zinc-100 text-black text-xs font-semibold">
+              {isEveningDone ? "Review / edit check-in" : "Open compact check-in"}
+            </button>
+          </section>
+
+          <GITracker bloatingEvents={activeRecord?.bloating_events} bowelMovements={activeRecord?.bowel_movements} onLogBloating={logBloatingEvent} onLogBowelMovement={logBowelMovement} />
+          <EventButtons />
+        </>
+      )}
+    </main>
   );
 }

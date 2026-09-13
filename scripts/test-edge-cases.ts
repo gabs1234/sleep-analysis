@@ -6,15 +6,21 @@ import {
   evaluateNightValidity,
   initializeStudyState,
 } from "../lib/engine/protocol-engine";
-import { determineTimeWindowContext } from "../lib/engine/time-context";
+import { determineTimeWindowContext, getPreviousNightDateKey } from "../lib/engine/time-context";
+import { timeStringToNightIso } from "../lib/engine/protocol-engine";
 import { generateStudyJSON, importStudyJSON } from "../lib/storage/data-export";
 import { validateStudyConfig } from "../lib/config/study-config";
 import { GoogleHealthProvider } from "../lib/wearable/google-health";
 import { MockWearableProvider } from "../lib/wearable/mock-wearable";
 import { ExperimentConfig } from "../types/experiment";
 import { NightRecord } from "../types/study";
+import { migrateStoredStudyState } from "../lib/storage/study-storage";
 
 const config = defaultStudy as unknown as ExperimentConfig;
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
 
 console.log("==========================================");
 console.log("  RUNNING REAL-WORLD EDGE CASE TEST SUITE ");
@@ -191,12 +197,14 @@ console.log("\n[Test 4] Time-of-Day Context Window Transitions...");
   // 1. Morning at 07:30 AM before checkin -> context must be morning_checkin
   const morningTime = new Date("2026-08-27T07:30:00");
   const morningContext = determineTimeWindowContext(config, state, morningTime);
-  console.assert(morningContext.context === "morning_checkin", "07:30 AM prompts morning_checkin");
+  assert(morningContext.context === "morning_checkin", "07:30 AM prompts morning_checkin");
+  assert(morningContext.todayDateKey === "2026-08-26", "Morning must target the preceding sleep night");
+  assert(getPreviousNightDateKey(morningTime) === "2026-08-26", "Previous-night helper uses the evening date");
 
   // 2. Morning after completing morning check-in -> all_done_today
   state.records.push({
-    id: "2026-08-27",
-    date: "2026-08-27",
+    id: "2026-08-26",
+    date: "2026-08-26",
     phase_id: "baseline",
     phase_index: 0,
     night_number_in_phase: 1,
@@ -215,7 +223,8 @@ console.log("\n[Test 4] Time-of-Day Context Window Transitions...");
   });
 
   const postMorningContext = determineTimeWindowContext(config, state, new Date("2026-08-27T09:30:00"));
-  console.assert(postMorningContext.context === "all_done_today", "Morning after check-in shows all_done_today");
+  assert(postMorningContext.context === "all_done_today", "Morning after check-in shows all_done_today");
+  assert(postMorningContext.targetNightRecord?.date === "2026-08-26", "Morning outcome remains joined to its evening record");
 
   // 3. Evening at 20:00 PM -> context must be evening_protocol
   const eveningTime = new Date("2026-08-27T20:00:00");
@@ -224,14 +233,36 @@ console.log("\n[Test 4] Time-of-Day Context Window Transitions...");
 
   // 4. Late Night / Midnight at 23:45 PM or 01:30 AM -> context remains evening_protocol for bedtime events
   const midnightContext = determineTimeWindowContext(config, state, new Date("2026-08-27T23:45:00"));
-  console.assert(midnightContext.context === "evening_protocol", "Midnight before sleep shows evening_protocol");
+  assert(midnightContext.context === "evening_protocol", "Midnight before sleep shows evening_protocol");
+  const afterMidnightPlan = timeStringToNightIso("00:30", "2026-08-27");
+  assert(new Date(afterMidnightPlan).getDate() === 28, "After-midnight plan times belong to the following civil day");
   console.log("  ✓ Time context windows evaluated accurately (Morning checkin, Afternoon done, Nighttime protocol).");
 }
 
 // -------------------------------------------------------------
-// TEST 5: Record Amendment & Automatic Validity Recalculation
+// TEST 5: Ordinary Context & Selective Exclusion
 // -------------------------------------------------------------
-console.log("\n[Test 5] Record Amendment & Adherence Correction...");
+console.log("\n[Test 5] Travel Context & Selective Exclusion...");
+{
+  const phase = config.phases[0];
+  const baseAssessment = {
+    completed_at: "2026-08-28T07:00:00Z",
+    readiness: 2,
+    sleep_quality: 2,
+    wake_reason: "natural" as const,
+    unusual_night: true,
+  };
+  const travel = evaluateNightValidity({ morning_assessment: { ...baseAssessment, unusual_reasons: ["travel"] } }, phase);
+  const illness = evaluateNightValidity({ morning_assessment: { ...baseAssessment, unusual_reasons: ["illness"] } }, phase);
+  assert(travel.isValid, "Travel is context, not an automatic exclusion");
+  assert(!illness.isValid, "Acute illness remains an exclusion");
+  console.log("  ✓ Travel remains included while disruptive illness is excluded.");
+}
+
+// -------------------------------------------------------------
+// TEST 6: Record Amendment & Automatic Validity Recalculation
+// -------------------------------------------------------------
+console.log("\n[Test 6] Record Amendment & Adherence Correction...");
 {
   const phase = config.phases[0];
   // Initial record: marked unusual with fever (is_valid = false)
@@ -276,9 +307,9 @@ console.log("\n[Test 5] Record Amendment & Adherence Correction...");
 }
 
 // -------------------------------------------------------------
-// TEST 6: Malformed Study Config Validation
+// TEST 7: Malformed Study Config Validation
 // -------------------------------------------------------------
-console.log("\n[Test 6] Malformed Config JSON Validation...");
+console.log("\n[Test 7] Malformed Config JSON Validation...");
 {
   const invalid1 = validateStudyConfig({});
   console.assert(!invalid1.valid, "Empty config rejected");
@@ -292,9 +323,9 @@ console.log("\n[Test 6] Malformed Config JSON Validation...");
 }
 
 // -------------------------------------------------------------
-// TEST 7: Data Persistence, Export & Full Backup Restore
+// TEST 8: Data Persistence, Export & Full Backup Restore
 // -------------------------------------------------------------
-console.log("\n[Test 7] Data Persistence & Full Backup Restore Across Updates...");
+console.log("\n[Test 8] Data Persistence & Full Backup Restore Across Updates...");
 {
   const state = initializeStudyState(config);
   state.records = [
@@ -344,9 +375,65 @@ console.log("\n[Test 7] Data Persistence & Full Backup Restore Across Updates...
     restoreResult.state?.records[0].wearable_data?.duration_minutes === 460,
     "Restored wearable data matches"
   );
-  console.log("  ✓ Exported & restored complete unblinded backup JSON with 100% fidelity.");
+console.log("  ✓ Exported & restored complete unblinded backup JSON with 100% fidelity.");
+}
+
+// -------------------------------------------------------------
+// TEST 9: Legacy Date & Simulator Data Migration
+// -------------------------------------------------------------
+console.log("\n[Test 9] Legacy Night-Date & Simulator Migration...");
+{
+  const legacy = initializeStudyState(config);
+  legacy.data_schema_version = 1;
+  legacy.records = [
+    {
+      id: "2026-09-10",
+      date: "2026-09-10",
+      phase_id: "baseline",
+      phase_index: 0,
+      night_number_in_phase: 1,
+      prescribed_instruction: "Follow normal routine",
+      evening_actions: [{ action_id: "lights_out", action_label: "Lights out", timestamp: "2026-09-10T23:00:00Z" }],
+      is_valid: false,
+      created_at: "2026-09-10T18:00:00Z",
+      updated_at: "2026-09-10T23:00:00Z",
+    },
+    {
+      id: "2026-09-11",
+      date: "2026-09-11",
+      phase_id: "baseline",
+      phase_index: 0,
+      night_number_in_phase: 2,
+      prescribed_instruction: "Follow normal routine",
+      evening_actions: [],
+      morning_assessment: {
+        completed_at: "2026-09-11T07:15:00",
+        readiness: 2,
+        sleep_quality: 2,
+        wake_reason: "natural",
+        unusual_night: false,
+      },
+      wearable_data: { provider: "mock", synced_at: "2026-09-11T07:15:00Z", sync_status: "synced" },
+      raw_food_records: [{ id: "2026-09-11_bfast_1", timestamp: "2026-09-11T08:30:00Z", name: "Synthetic breakfast", calories: 460 }],
+      is_valid: true,
+      created_at: "2026-09-11T07:15:00Z",
+      updated_at: "2026-09-11T07:15:00Z",
+    },
+  ];
+
+  const migrated = migrateStoredStudyState(legacy, config);
+  const target = migrated.records.find((record) => record.date === "2026-09-10");
+  const source = migrated.records.find((record) => record.date === "2026-09-11");
+  assert(migrated.data_schema_version === 2, "Migration marks the repaired schema version");
+  assert(target?.morning_assessment?.completed_at === "2026-09-11T07:15:00", "Legacy morning assessment shifts to the prior evening record");
+  assert(!source?.morning_assessment, "The next-day source no longer duplicates the morning assessment");
+  assert(!source?.wearable_data, "Synthetic wearable data is removed");
+  assert((source?.raw_food_records?.length || 0) === 0, "Recognizable synthetic nutrition data is removed");
+  assert(source?.migration_archive?.simulated_wearable_data?.provider === "mock", "Removed simulator data remains recoverable in the migration archive");
+  assert(source?.migration_archive?.simulated_food_records?.length === 1, "Removed simulator nutrition remains recoverable in the migration archive");
+  console.log("  ✓ Existing wrong-day outcomes are repaired and synthetic measurements removed.");
 }
 
 console.log("\n==========================================");
-console.log("  ALL 7 EDGE CASE TEST SUITES PASSED! ✓   ");
+console.log("  ALL 9 EDGE CASE TEST SUITES PASSED! ✓   ");
 console.log("==========================================\n");

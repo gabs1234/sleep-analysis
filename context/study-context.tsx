@@ -29,6 +29,7 @@ import {
   DailyNutritionFallback,
 } from "@/types/nutrition";
 import { WearableProviderConfig } from "@/types/wearable";
+import { UserPreferences } from "@/types/preferences";
 import {
   formatDateKey,
   calculateStudyState,
@@ -42,6 +43,7 @@ import {
 import {
   determineTimeWindowContext,
   getActiveNightDateKey,
+  getPreviousNightDateKey,
   ContextualViewState,
 } from "@/lib/engine/time-context";
 import {
@@ -52,6 +54,9 @@ import {
   loadWearableConfig,
   saveWearableConfig,
   clearAllStudyData,
+  loadUserPreferences,
+  saveUserPreferences,
+  migrateStoredStudyState,
 } from "@/lib/storage/study-storage";
 import { MockWearableProvider } from "@/lib/wearable/mock-wearable";
 import { GoogleHealthProvider } from "@/lib/wearable/google-health";
@@ -66,6 +71,7 @@ interface StudyContextType {
   currentPhaseProgress: PhaseProgress;
   allPhaseProgresses: PhaseProgress[];
   wearableConfig: WearableProviderConfig;
+  preferences: UserPreferences;
   isReady: boolean;
 
   // Actions
@@ -91,6 +97,7 @@ interface StudyContextType {
   importBackupData: (state: StudyState, config?: ExperimentConfig) => void;
   setStudyStatus: (status: StudyStatus) => void;
   updateWearableConfig: (config: WearableProviderConfig) => void;
+  updatePreferences: (preferences: UserPreferences) => void;
   resetStudy: () => void;
   simulateAddCompletedNight: (overrides?: Partial<MorningAssessment>) => Promise<void>;
 }
@@ -126,6 +133,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
     return stored;
   });
+  const [preferences, setPreferences] = useState<UserPreferences>(() => loadUserPreferences());
+  const [timeTick, setTimeTick] = useState(0);
 
   // Save changes to storage whenever state updates
   useEffect(() => {
@@ -160,6 +169,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     }
   }, [isReady]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimeTick((tick) => tick + 1), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   // Derived study calculations
   const studyCalculations = useMemo(() => {
     return calculateStudyState(config, state.records);
@@ -169,13 +183,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     return config.phases[studyCalculations.activePhaseIndex] || config.phases[0];
   }, [config, studyCalculations.activePhaseIndex]);
 
+  const activeTonightDateKey = getActiveNightDateKey();
   const tonightInstruction = useMemo(() => {
-    return getTonightInstruction(config, state.records);
-  }, [config, state.records]);
+    return getTonightInstruction(config, state.records, activeTonightDateKey);
+  }, [activeTonightDateKey, config, state.records]);
 
-  const viewContext = useMemo(() => {
-    return determineTimeWindowContext(config, state);
-  }, [config, state]);
+  void timeTick;
+  const viewContext = determineTimeWindowContext(config, state);
 
   // Silent wearable and nutrition sync helper
   const fetchWearableDataSilently = useCallback(
@@ -188,14 +202,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             provider.fetchNutritionData(targetDate),
           ]);
           return { sleep, foods };
-        } else {
-          const provider = new MockWearableProvider();
-          const [sleep, foods] = await Promise.all([
-            provider.fetchSleepData(targetDate),
-            provider.fetchNutritionData(targetDate),
-          ]);
-          return { sleep, foods };
         }
+
+        // The simulator is deliberately excluded from real collection paths.
+        // It is used only by the explicit developer simulation action below.
+        return { sleep: null, foods: [] as RawFoodRecord[] };
       } catch (err) {
         console.warn("Silent wearable & nutrition sync notice:", err);
         return { sleep: null, foods: [] as RawFoodRecord[] };
@@ -241,7 +252,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             nutrition_fallback: updates.nutrition_fallback,
             naps: updates.naps || [],
             caffeine_events: updates.caffeine_events || [],
-            is_valid: updates.is_valid ?? true,
+            is_valid: updates.is_valid ?? false,
             exclusion_reason: updates.exclusion_reason,
             created_at: now,
             updated_at: now,
@@ -811,7 +822,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // Action: Submit morning assessment
   const submitMorningAssessment = useCallback(
     async (data: Omit<MorningAssessment, "completed_at">) => {
-      const todayKey = getActiveNightDateKey();
+      const todayKey = getPreviousNightDateKey();
       const completedAt = new Date().toISOString();
 
       const assessment: MorningAssessment = {
@@ -819,15 +830,18 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         completed_at: completedAt,
       };
 
-      // Background silent wearable & nutrition sync
-      const { sleep, foods } = await fetchWearableDataSilently(todayKey);
+      // Save subjective answers immediately. External APIs must never delay or
+      // endanger the primary morning outcome.
+      const sleep = null;
+      const foods: RawFoodRecord[] = [];
 
       setState((prevState) => {
         const records = [...prevState.records];
         const existingIdx = records.findIndex((r) => r.date === todayKey);
 
-        const currentPhaseIdx = studyCalculations.activePhaseIndex;
-        const phase = config.phases[currentPhaseIdx];
+        const existingRec = existingIdx >= 0 ? records[existingIdx] : undefined;
+        const currentPhaseIdx = existingRec?.phase_index ?? studyCalculations.activePhaseIndex;
+        const phase = config.phases.find((item) => item.id === existingRec?.phase_id) || config.phases[currentPhaseIdx];
 
         const validity = evaluateNightValidity(
           { morning_assessment: assessment },
@@ -838,7 +852,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           (r) => r.phase_id === phase.id && r.is_valid && r.date !== todayKey
         ).length;
 
-        const existingRec = existingIdx >= 0 ? records[existingIdx] : undefined;
         const mergedFoods = foods.length > 0 ? foods : (existingRec?.raw_food_records || []);
         const lightsOut = existingRec?.evening_actions.find((a) => a.action_id === "lights_out")?.timestamp;
         const derivedNutrition = deriveNutritionSummary(
@@ -859,11 +872,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           valid_night_number_in_phase: validity.isValid
             ? priorValidNights + 1
             : undefined,
-          condition_key: tonightInstruction.conditionKey,
-          prescribed_instruction: tonightInstruction.primaryInstruction,
-          secondary_instruction: tonightInstruction.secondaryInstruction,
+          condition_key: existingRec?.condition_key ?? tonightInstruction.conditionKey,
+          prescribed_instruction: existingRec?.prescribed_instruction ?? tonightInstruction.primaryInstruction,
+          secondary_instruction: existingRec?.secondary_instruction ?? tonightInstruction.secondaryInstruction,
           evening_actions: existingRec ? existingRec.evening_actions : [],
           evening_acknowledged_at: existingRec?.evening_acknowledged_at,
+          evening_plan: existingRec?.evening_plan,
+          evening_plan_completed_at: existingRec?.evening_plan_completed_at,
           daily_context: existingRec?.daily_context,
           pre_sleep_state: existingRec?.pre_sleep_state,
           bloating_events: existingRec?.bloating_events || [],
@@ -875,6 +890,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           derived_nutrition: derivedNutrition,
           naps: existingRec?.naps || [],
           caffeine_events: existingRec?.caffeine_events || [],
+          routine_sessions: existingRec?.routine_sessions || [],
           morning_assessment: assessment,
           wearable_data: sleep || existingRec?.wearable_data,
           is_valid: validity.isValid,
@@ -897,12 +913,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           last_active_at: completedAt,
         };
       });
+
+      void syncWearableForDate(todayKey);
     },
     [
       config,
       studyCalculations.activePhaseIndex,
       tonightInstruction,
-      fetchWearableDataSilently,
+      syncWearableForDate,
     ]
   );
 
@@ -923,6 +941,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           action_id: actionId,
           action_label: actionLabel,
           timestamp: now,
+          capture_source: customTimestamp ? "recalled_later" as const : "live" as const,
+          captured_at: new Date().toISOString(),
         };
 
         if (existingIdx >= 0) {
@@ -1046,6 +1066,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setState((prev) => {
         const recordsToKeep = preserveRecords ? prev.records : [];
         const newState: StudyState = {
+          data_schema_version: 2,
           study_id: newConfig.study_id,
           status: prev.status || "active",
           started_at: prev.started_at || new Date().toISOString(),
@@ -1064,14 +1085,16 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // Action: Restore full backup data
   const importBackupData = useCallback(
     (importedState: StudyState, importedConfig?: ExperimentConfig) => {
+      const effectiveConfig = importedConfig || config;
+      const migratedState = migrateStoredStudyState(importedState, effectiveConfig);
       if (importedConfig) {
         setConfig(importedConfig);
         saveStoredStudyConfig(importedConfig);
       }
-      setState(importedState);
-      saveStoredStudyState(importedState);
+      setState(migratedState);
+      saveStoredStudyState(migratedState);
     },
-    []
+    [config]
   );
 
   // Action: Update study status
@@ -1087,6 +1110,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const updateWearableConfig = useCallback((newConfig: WearableProviderConfig) => {
     setWearableConfigState(newConfig);
     saveWearableConfig(newConfig);
+  }, []);
+
+  const updatePreferences = useCallback((newPreferences: UserPreferences) => {
+    setPreferences(newPreferences);
+    saveUserPreferences(newPreferences);
   }, []);
 
   // Action: Reset study data
@@ -1115,7 +1143,11 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
       const phase = config.phases[studyCalculations.activePhaseIndex];
       const validity = evaluateNightValidity({ morning_assessment: assessment }, phase);
-      const { sleep, foods } = await fetchWearableDataSilently(dateKey);
+      const mockProvider = new MockWearableProvider();
+      const [sleep, foods] = await Promise.all([
+        mockProvider.fetchSleepData(dateKey),
+        mockProvider.fetchNutritionData(dateKey),
+      ]);
 
       setState((prevState) => {
         const records = [...prevState.records];
@@ -1174,7 +1206,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       state.records.length,
       studyCalculations.activePhaseIndex,
       tonightInstruction,
-      fetchWearableDataSilently,
     ]
   );
 
@@ -1189,6 +1220,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         currentPhaseProgress: studyCalculations.currentPhaseProgress,
         allPhaseProgresses: studyCalculations.phaseProgresses,
         wearableConfig,
+        preferences,
         isReady,
         submitMorningAssessment,
         updateNightRecord,
@@ -1210,6 +1242,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         importBackupData,
         setStudyStatus,
         updateWearableConfig,
+        updatePreferences,
         resetStudy,
         simulateAddCompletedNight,
       }}

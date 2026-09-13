@@ -81,6 +81,19 @@ export function timeStringToIso(timeStr: string, baseDate: Date = new Date()): s
 }
 
 /**
+ * Anchors a clock time to a sleep-night key. Times after midnight and before
+ * 05:00 belong to the following civil day, while the record remains keyed to
+ * the evening on which the night began.
+ */
+export function timeStringToNightIso(timeStr: string, nightDateKey: string): string {
+  const [year, month, day] = nightDateKey.split("-").map(Number);
+  const [hours, minutes] = timeStr.split(":").map(Number);
+  const d = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  if (hours < 5) d.setDate(d.getDate() + 1);
+  return d.toISOString();
+}
+
+/**
  * Evaluates whether a completed night record meets validity criteria for the study.
  * Abnormal nights or complete protocol non-adherence are excluded from valid count
  * without being deleted from the study records.
@@ -94,11 +107,26 @@ export function evaluateNightValidity(
     return { isValid: false, reason: "Morning check-in not completed" };
   }
 
-  // If marked as an unusual night with disruptive tags
+  // Context is retained without automatically discarding ordinary life.
+  // Only severe conditions that make the sleep observation incomparable are
+  // exclusions; travel, alcohol, stress, caffeine, and exercise stay available
+  // as covariates for sensitivity analyses.
   if (morning.unusual_night) {
     const reasons = morning.unusual_reasons || [];
-    const reasonText = reasons.length > 0 ? reasons.join(", ") : "abnormal night";
-    return { isValid: false, reason: `Marked unusual: ${reasonText}` };
+    const exclusionReasons = reasons.filter((reason) =>
+      [
+        "illness",
+        "acute_illness",
+        "interruption",
+        "major_sleep_interruption",
+      ].includes(reason)
+    );
+    if (exclusionReasons.length > 0) {
+      return {
+        isValid: false,
+        reason: `Disruptive context: ${exclusionReasons.join(", ")}`,
+      };
+    }
   }
 
   // If protocol adherence is explicitly "no" for an intervention phase
@@ -121,8 +149,9 @@ export function calculatePhaseProgress(
   records: NightRecord[]
 ): PhaseProgress {
   const phaseRecords = records.filter((r) => r.phase_id === phase.id);
-  const validRecords = phaseRecords.filter((r) => r.is_valid);
-  const totalNights = phaseRecords.length;
+  const completedRecords = phaseRecords.filter((r) => r.morning_assessment);
+  const validRecords = completedRecords.filter((r) => r.is_valid);
+  const totalNights = completedRecords.length;
   const validNights = validRecords.length;
   const isComplete = validNights >= phase.valid_nights_required;
   const remaining = Math.max(0, phase.valid_nights_required - validNights);
@@ -183,10 +212,17 @@ export function calculateStudyState(
  */
 export function getTonightInstruction(
   config: ExperimentConfig,
-  records: NightRecord[]
+  records: NightRecord[],
+  activeNightDateKey?: string
 ): TonightInstruction {
-  const { activePhaseIndex, isAllPhasesComplete, currentPhaseProgress } =
+  const calculations =
     calculateStudyState(config, records);
+  const activeRecord = activeNightDateKey
+    ? records.find((record) => record.date === activeNightDateKey)
+    : undefined;
+  const activePhaseIndex = activeRecord?.phase_index ?? calculations.activePhaseIndex;
+  const isAllPhasesComplete = calculations.isAllPhasesComplete;
+  const currentPhaseProgress = calculations.phaseProgresses[activePhaseIndex] || calculations.currentPhaseProgress;
   const phase = config.phases[activePhaseIndex];
 
   if (isAllPhasesComplete) {
@@ -206,12 +242,12 @@ export function getTonightInstruction(
 
   const isBaseline = phase.type === "baseline";
   const validCount = currentPhaseProgress.validNightsLogged;
-  const nightCount = currentPhaseProgress.totalNightsLogged + 1;
+  const nightCount = activeRecord?.night_number_in_phase ?? currentPhaseProgress.totalNightsLogged + 1;
 
   // If phase has conditions and a randomized sequence
   if (phase.conditions && phase.sequence && phase.sequence.length > 0) {
     const sequenceIdx = validCount % phase.sequence.length;
-    const conditionKey = phase.sequence[sequenceIdx];
+    const conditionKey = activeRecord?.condition_key || phase.sequence[sequenceIdx];
     const condition = phase.conditions[conditionKey];
 
     if (condition) {
@@ -367,6 +403,7 @@ export function deriveBehavioralIntervals(record: Partial<NightRecord>): Record<
 export function initializeStudyState(config: ExperimentConfig): StudyState {
   const today = formatDateKey(new Date());
   return {
+    data_schema_version: 2,
     study_id: config.study_id,
     status: "active",
     started_at: new Date().toISOString(),

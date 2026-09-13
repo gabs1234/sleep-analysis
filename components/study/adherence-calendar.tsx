@@ -3,7 +3,16 @@
 import React, { useState, useMemo } from "react";
 import { useStudySession } from "@/context/study-context";
 import { NightRecord, WakeReason, ProtocolAdherence, UnusualNightReason } from "@/types/study";
-import { formatDateKey, formatLocalTime } from "@/lib/engine/protocol-engine";
+import { formatDateKey, formatLocalTime, timeStringToNightIso } from "@/lib/engine/protocol-engine";
+
+const EDITABLE_EVENTS = [
+  { id: "meal_end", label: "Last meal" },
+  { id: "work_end", label: "Finished work" },
+  { id: "screen_end", label: "Active screens done" },
+  { id: "winddown_start", label: "Start wind-down" },
+  { id: "in_bed_ready", label: "In bed" },
+  { id: "lights_out", label: "Lights out" },
+];
 
 const UNUSUAL_TAGS: Array<{ value: UnusualNightReason; label: string }> = [
   { value: "illness", label: "Illness / fever" },
@@ -31,6 +40,12 @@ export function AdherenceCalendar() {
   const [editUnusual, setEditUnusual] = useState<boolean>(false);
   const [editUnusualReasons, setEditUnusualReasons] = useState<UnusualNightReason[]>([]);
   const [editReasonNote, setEditReasonNote] = useState<string>("");
+  const [editEventTimes, setEditEventTimes] = useState<Record<string, string>>({});
+  const [editMentalArousal, setEditMentalArousal] = useState<number | undefined>();
+  const [editSleepiness, setEditSleepiness] = useState<number | undefined>();
+  const [editDidWork, setEditDidWork] = useState<boolean | undefined>();
+  const [editDayType, setEditDayType] = useState<NonNullable<NightRecord["daily_context"]>["day_type"]>("regular");
+  const [editMorningEnabled, setEditMorningEnabled] = useState(false);
   const [amendSaveNotice, setAmendSaveNotice] = useState<string | null>(null);
 
   // Generate calendar matrix for past 28 days (4 weeks)
@@ -70,7 +85,7 @@ export function AdherenceCalendar() {
 
       if (isFuture) {
         status = "future";
-      } else if (record) {
+      } else if (record?.morning_assessment) {
         if (record.is_valid) {
           status = "valid";
         } else {
@@ -129,6 +144,7 @@ export function AdherenceCalendar() {
     const existing = state.records.find((r) => r.date === dateStr);
 
     if (existing) {
+      setEditMorningEnabled(Boolean(existing.morning_assessment));
       setEditValidity(existing.is_valid);
       setEditReadiness(existing.morning_assessment?.readiness ?? 2);
       setEditQuality(existing.morning_assessment?.sleep_quality ?? 2);
@@ -137,7 +153,13 @@ export function AdherenceCalendar() {
       setEditUnusual(existing.morning_assessment?.unusual_night ?? false);
       setEditUnusualReasons(existing.morning_assessment?.unusual_reasons || []);
       setEditReasonNote(existing.exclusion_reason || existing.morning_assessment?.adherence_note || "");
+      setEditEventTimes(Object.fromEntries(existing.evening_actions.filter((action) => action.timestamp !== "NO_WORK").map((action) => [action.action_id, formatLocalTime(action.timestamp)])));
+      setEditMentalArousal(existing.pre_sleep_state?.mental_arousal);
+      setEditSleepiness(existing.pre_sleep_state?.sleepiness);
+      setEditDidWork(existing.daily_context?.did_work ?? (existing.evening_actions.some((action) => action.action_id === "work_end" && action.timestamp !== "NO_WORK") ? true : undefined));
+      setEditDayType(existing.daily_context?.day_type || "regular");
     } else {
+      setEditMorningEnabled(false);
       setEditValidity(true);
       setEditReadiness(2);
       setEditQuality(2);
@@ -146,6 +168,11 @@ export function AdherenceCalendar() {
       setEditUnusual(false);
       setEditUnusualReasons([]);
       setEditReasonNote("");
+      setEditEventTimes({});
+      setEditMentalArousal(undefined);
+      setEditSleepiness(undefined);
+      setEditDidWork(undefined);
+      setEditDayType("regular");
     }
     setIsEditing(true);
   };
@@ -159,13 +186,28 @@ export function AdherenceCalendar() {
   const handleSaveAmendment = () => {
     if (!selectedDate) return;
 
+    const capturedAt = new Date().toISOString();
+    const editableIds = new Set(EDITABLE_EVENTS.map((event) => event.id));
+    const preservedActions = (selectedRecord?.evening_actions || []).filter((action) => !editableIds.has(action.action_id));
+    const editedActions = EDITABLE_EVENTS.flatMap((event) => {
+      const clock = editEventTimes[event.id];
+      if (!clock || (event.id === "work_end" && editDidWork === false)) return [];
+      return [{
+        action_id: event.id,
+        action_label: event.label,
+        timestamp: timeStringToNightIso(clock, selectedDate),
+        capture_source: "recalled_later" as const,
+        captured_at: capturedAt,
+      }];
+    });
+
     updateNightRecord(selectedDate, {
-      is_valid: editValidity,
-      exclusion_reason: !editValidity
+      is_valid: editMorningEnabled ? editValidity : false,
+      exclusion_reason: editMorningEnabled && !editValidity
         ? editReasonNote.trim() ||
           (editUnusualReasons.length > 0 ? editUnusualReasons.join(", ") : "Manual exclusion")
         : undefined,
-      morning_assessment: {
+      morning_assessment: editMorningEnabled ? {
         completed_at: selectedRecord?.morning_assessment?.completed_at || new Date().toISOString(),
         readiness: editReadiness,
         sleep_quality: editQuality,
@@ -174,7 +216,23 @@ export function AdherenceCalendar() {
         adherence_note: editReasonNote.trim() || undefined,
         unusual_night: editUnusual,
         unusual_reasons: editUnusualReasons.length > 0 ? editUnusualReasons : undefined,
+      } : selectedRecord?.morning_assessment,
+      evening_actions: [...preservedActions, ...editedActions],
+      daily_context: {
+        ...selectedRecord?.daily_context,
+        did_work: editDidWork,
+        day_type: editDayType,
       },
+      pre_sleep_state: editMentalArousal === undefined && editSleepiness === undefined
+        ? selectedRecord?.pre_sleep_state
+        : {
+            ...selectedRecord?.pre_sleep_state,
+            mental_arousal: editMentalArousal,
+            sleepiness: editSleepiness,
+            completed_at: selectedRecord?.pre_sleep_state?.completed_at || capturedAt,
+            capture_source: selectedRecord?.pre_sleep_state?.capture_source || "recalled_later",
+            recalled_at: selectedRecord?.pre_sleep_state?.capture_source === "live" ? selectedRecord.pre_sleep_state.recalled_at : capturedAt,
+          },
     });
 
     setIsEditing(false);
@@ -362,12 +420,30 @@ export function AdherenceCalendar() {
                 </div>
               )}
 
+              {selectedRecord.daily_context && (
+                <div className="text-zinc-300">
+                  Day: {selectedRecord.daily_context.day_type?.replace("_", " ") || "legacy"} • Work: {selectedRecord.daily_context.did_work === undefined ? "not recorded" : selectedRecord.daily_context.did_work ? "yes" : "no"}
+                </div>
+              )}
+
+              {selectedRecord.evening_plan && selectedRecord.evening_plan.length > 0 && (
+                <div className="text-violet-300">
+                  Planned: {selectedRecord.evening_plan.map((item) => `${item.action_label} (${formatLocalTime(item.planned_timestamp)})`).join(" • ")}
+                </div>
+              )}
+
               {selectedRecord.evening_actions && selectedRecord.evening_actions.length > 0 && (
                 <div className="text-zinc-300">
-                  Evening Logs:{" "}
+                  Actual: {" "}
                   {selectedRecord.evening_actions
-                    .map((a) => `${a.action_label} (${formatLocalTime(a.timestamp)})`)
+                    .map((a) => `${a.action_label} (${a.timestamp === "NO_WORK" ? "no work" : formatLocalTime(a.timestamp)}${a.capture_source?.startsWith("recalled") ? ", recalled" : ""})`)
                     .join(" • ")}
+                </div>
+              )}
+
+              {selectedRecord.pre_sleep_state && (
+                <div className="text-zinc-300">
+                  Pre-sleep: mind {selectedRecord.pre_sleep_state.mental_arousal ?? "—"}/3 • sleepiness {selectedRecord.pre_sleep_state.sleepiness ?? "—"}/3{selectedRecord.pre_sleep_state.capture_source?.startsWith("recalled") ? " • recalled" : ""}
                 </div>
               )}
 
@@ -380,9 +456,21 @@ export function AdherenceCalendar() {
               )}
 
               {selectedRecord.wearable_data && (
+                <div className="text-zinc-400 space-y-0.5">
+                  <div>External sleep ({selectedRecord.wearable_data.provider}): {selectedRecord.wearable_data.duration_minutes ?? "—"}m • {selectedRecord.wearable_data.sleep_efficiency_pct ?? "—"}% efficiency • WASO {selectedRecord.wearable_data.waso_minutes ?? "—"}m</div>
+                  <div>HRV {selectedRecord.wearable_data.hrv_rmssd ?? "—"}ms • resting HR {selectedRecord.wearable_data.resting_hr ?? "—"}bpm • steps {selectedRecord.wearable_data.steps ?? "—"}</div>
+                </div>
+              )}
+
+              {selectedRecord.derived_nutrition && Boolean(selectedRecord.raw_food_records?.length || selectedRecord.missing_eating_events?.length || selectedRecord.nutrition_fallback) && (
                 <div className="text-zinc-400">
-                  Smartwatch: {selectedRecord.wearable_data.duration_minutes}m duration •{" "}
-                  {selectedRecord.wearable_data.sleep_efficiency_pct}% efficiency
+                  Nutrition ({selectedRecord.derived_nutrition.data_provenance_summary || "derived"}): {selectedRecord.derived_nutrition.total_calories} kcal • P {selectedRecord.derived_nutrition.total_protein_g}g • final calories {formatLocalTime(selectedRecord.derived_nutrition.final_caloric_timestamp) || "—"}
+                </div>
+              )}
+
+              {selectedRecord.routine_sessions && selectedRecord.routine_sessions.length > 0 && (
+                <div className="text-sky-300">
+                  Daily routine: {selectedRecord.routine_sessions.filter((session) => session.completed_at).length} completed session(s), {selectedRecord.routine_sessions.filter((session) => session.completed_at).reduce((total, session) => total + session.target_minutes, 0)} minutes
                 </div>
               )}
             </div>
@@ -432,6 +520,43 @@ export function AdherenceCalendar() {
             </span>
             <span className="text-[10px] font-mono text-amber-400">EDITING MODE</span>
           </div>
+
+          <div className="space-y-3">
+            <div className="text-[11px] font-mono text-violet-300">DAY &amp; EVENING RECONSTRUCTION</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(["regular", "business_trip", "vacation", "sick_day", "day_off", "other"] as const).map((value) => (
+                <button key={value} type="button" onClick={() => setEditDayType(value)} className={`p-2 rounded-lg border text-[10px] capitalize ${editDayType === value ? "bg-zinc-100 text-black border-white" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>{value.replace("_", " ")}</button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setEditDidWork(true)} className={`p-2 rounded-lg border text-xs ${editDidWork === true ? "bg-zinc-100 text-black border-white" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>Worked</button>
+              <button type="button" onClick={() => setEditDidWork(false)} className={`p-2 rounded-lg border text-xs ${editDidWork === false ? "bg-zinc-100 text-black border-white" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>No work</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {EDITABLE_EVENTS.filter((event) => event.id !== "work_end" || editDidWork !== false).map((event) => (
+                <label key={event.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-2 space-y-1">
+                  <span className="block text-[10px] text-zinc-500">{event.label}</span>
+                  <input type="time" value={editEventTimes[event.id] || ""} onChange={(input) => setEditEventTimes((current) => ({ ...current, [event.id]: input.target.value }))} className="w-full bg-transparent text-xs font-mono text-zinc-200" />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-zinc-800">
+            <div className="text-[11px] font-mono text-zinc-400">PRE-SLEEP STATE (RECALLED VALUES ARE LABELLED)</div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {["Quiet", "Active", "Racing", "Can't switch off"].map((label, value) => <button key={label} type="button" onClick={() => setEditMentalArousal(value)} className={`p-2 rounded border text-[10px] ${editMentalArousal === value ? "bg-zinc-100 text-black border-white" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>{label}</button>)}
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {["Not sleepy", "Slightly", "Sleepy", "Struggling"].map((label, value) => <button key={label} type="button" onClick={() => setEditSleepiness(value)} className={`p-2 rounded border text-[10px] ${editSleepiness === value ? "bg-zinc-100 text-black border-white" : "bg-zinc-950 text-zinc-400 border-zinc-800"}`}>{label}</button>)}
+            </div>
+          </div>
+
+          <button type="button" onClick={() => setEditMorningEnabled((current) => !current)} className={`w-full p-2.5 rounded-lg border text-xs font-mono ${editMorningEnabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-zinc-800 bg-zinc-950 text-zinc-400"}`}>
+            {editMorningEnabled ? "Morning assessment included ✓" : "+ Add a morning assessment too"}
+          </button>
+
+          <div className={editMorningEnabled ? "contents" : "hidden"}>
 
           {/* 1. Validity Override */}
           <div className="space-y-1.5">
@@ -540,18 +665,17 @@ export function AdherenceCalendar() {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-mono text-zinc-400">
-                UNUSUAL FACTORS / CONFOUNDERS
+                NIGHT CONTEXT
               </label>
               <button
                 type="button"
                 onClick={() => {
                   const next = !editUnusual;
                   setEditUnusual(next);
-                  if (next) setEditValidity(false);
                 }}
                 className="text-[10px] font-mono text-amber-400 underline"
               >
-                {editUnusual ? "Mark Normal" : "+ Flag Unusual"}
+                {editUnusual ? "Clear context" : "+ Add context"}
               </button>
             </div>
 
@@ -587,6 +711,7 @@ export function AdherenceCalendar() {
               placeholder="e.g. Corrected illness tag, woke at 5am"
               className="w-full px-3 py-2 rounded bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-200 focus:outline-none focus:border-zinc-600"
             />
+          </div>
           </div>
 
           {/* Action Buttons */}

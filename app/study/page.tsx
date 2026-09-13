@@ -112,7 +112,7 @@ export default function StudyPage() {
         <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
           <span className="text-xs font-mono text-zinc-400">CURRENT PHASE</span>
           <span className="text-sm font-semibold text-zinc-100">
-            Phase {state.current_phase_index + 1} of {config.phases.length} ({activePhase.name})
+            Phase {currentPhaseProgress.phaseIndex + 1} of {config.phases.length} ({activePhase.name})
           </span>
         </div>
 
@@ -151,7 +151,7 @@ export default function StudyPage() {
         <div className="space-y-2">
           {config.phases.map((phase, idx) => {
             const prog = allPhaseProgresses[idx];
-            const isCurrent = idx === state.current_phase_index;
+            const isCurrent = idx === currentPhaseProgress.phaseIndex;
             const isDone = prog?.isComplete;
 
             return (

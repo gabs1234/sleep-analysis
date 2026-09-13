@@ -441,10 +441,10 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
         <div className="space-y-5 animate-fade-in">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
-              Anything unusual about last night?
+              Anything worth noting about last night?
             </h1>
             <p className="text-xs text-zinc-400">
-              Identifies acute confounders (illness, alcohol, travel, unusual stress).
+              Keep ordinary-life context for later analysis. Travel does not invalidate a night.
             </p>
           </div>
 
@@ -457,7 +457,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
                 className="py-6 rounded-xl border border-zinc-800 bg-zinc-900/70 hover:bg-zinc-800 active:scale-[0.98] text-lg font-semibold text-zinc-100 transition-all flex flex-col items-center justify-center space-y-1"
               >
                 <span>No</span>
-                <span className="text-[11px] font-normal text-zinc-400">Normal sleep night</span>
+                <span className="text-[11px] font-normal text-zinc-400">Nothing to add</span>
               </button>
               <button
                 type="button"
@@ -466,7 +466,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
                 className="py-6 rounded-xl border border-zinc-800 bg-zinc-900/70 hover:bg-zinc-800 active:scale-[0.98] text-lg font-semibold text-zinc-100 transition-all flex flex-col items-center justify-center space-y-1"
               >
                 <span>Yes</span>
-                <span className="text-[11px] font-normal text-amber-400/80">Flag factors</span>
+                <span className="text-[11px] font-normal text-amber-400/80">Add context</span>
               </button>
             </div>
           ) : (

@@ -72,6 +72,10 @@ export function generateStudyCSV(
     "prescribed_instruction",
     "is_valid",
     "exclusion_reason",
+    "scheduled_workday",
+    "did_work",
+    "day_type",
+    "timezone",
     
     // Daily Subjective Context (Day D)
     "overall_stress",
@@ -111,6 +115,8 @@ export function generateStudyCSV(
     // Pre-sleep state & Timestamps
     "pre_sleep_mental_arousal",
     "pre_sleep_sleepiness",
+    "pre_sleep_capture_source",
+    "evening_plan_summary",
     "work_to_lights_out_min",
     "screen_to_lights_out_min",
     "winddown_duration_min",
@@ -118,6 +124,9 @@ export function generateStudyCSV(
     "caffeine_to_lights_out_min",
     "total_nap_min",
     "evening_actions_summary",
+    "evening_action_sources",
+    "daily_routine_sessions_completed",
+    "daily_routine_minutes_completed",
     
     // Night D Wearable Sleep Response
     "wearable_provider",
@@ -159,6 +168,13 @@ export function generateStudyCSV(
           .map((a) => `${a.action_id}@${formatLocalTime(a.timestamp)}`)
           .join(";")
       : "";
+    const actionSources = record.evening_actions
+      ? record.evening_actions.map((action) => `${action.action_id}:${action.capture_source || "legacy"}`).join(";")
+      : "";
+    const planSummary = record.evening_plan
+      ? record.evening_plan.map((item) => `${item.action_id}@${formatLocalTime(item.planned_timestamp)}`).join(";")
+      : "";
+    const completedRoutineSessions = (record.routine_sessions || []).filter((session) => session.completed_at);
 
     const maxBloat = record.bloating_events && record.bloating_events.length > 0
       ? Math.max(...record.bloating_events.map((b) => b.severity))
@@ -185,6 +201,10 @@ export function generateStudyCSV(
       escapeCsv(record.prescribed_instruction),
       escapeCsv(record.is_valid ? "TRUE" : "FALSE"),
       escapeCsv(record.exclusion_reason ?? ""),
+      escapeCsv(ctx?.scheduled_workday === undefined ? "" : ctx.scheduled_workday ? "TRUE" : "FALSE"),
+      escapeCsv(ctx?.did_work === undefined ? "" : ctx.did_work ? "TRUE" : "FALSE"),
+      escapeCsv(ctx?.day_type ?? ""),
+      escapeCsv(ctx?.timezone ?? ""),
       
       // Daily Subjective Context
       escapeCsv(ctx?.overall_stress ?? ""),
@@ -195,7 +215,7 @@ export function generateStudyCSV(
       escapeCsv(ctx?.eating_out_of_control ?? fb?.eating_out_of_control ?? ""),
       
       // Nutrition Completeness & Provenance
-      escapeCsv(record.food_log_completeness ?? "yes"),
+      escapeCsv(record.food_log_completeness ?? ""),
       escapeCsv(nut?.data_provenance_summary ?? ""),
       escapeCsv(record.missing_eating_events?.length ?? 0),
       escapeCsv(fb?.intake_relative_to_intent ?? ""),
@@ -224,6 +244,8 @@ export function generateStudyCSV(
       // Pre-sleep & Intervals
       escapeCsv(ps?.mental_arousal ?? ""),
       escapeCsv(ps?.sleepiness ?? ""),
+      escapeCsv(ps?.capture_source ?? ""),
+      escapeCsv(planSummary),
       escapeCsv(intervals?.work_to_lights_out_minutes ?? ""),
       escapeCsv(intervals?.screen_to_lights_out_minutes ?? ""),
       escapeCsv(intervals?.winddown_duration_minutes ?? ""),
@@ -231,6 +253,9 @@ export function generateStudyCSV(
       escapeCsv(intervals?.caffeine_to_lights_out_minutes ?? ""),
       escapeCsv(intervals?.total_nap_minutes ?? ""),
       escapeCsv(actionsSummary),
+      escapeCsv(actionSources),
+      escapeCsv(completedRoutineSessions.length),
+      escapeCsv(completedRoutineSessions.reduce((total, session) => total + session.target_minutes, 0)),
       
       // Wearable
       escapeCsv(wearable?.provider ?? ""),

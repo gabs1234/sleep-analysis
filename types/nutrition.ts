@@ -5,6 +5,7 @@ export type MealSize = "small" | "normal" | "large";
 export type NutritionSource =
   | "macrofactor"
   | "health_connect"
+  | "google_fit"
   | "manual_exact"
   | "manual_approximate"
   | "derived";

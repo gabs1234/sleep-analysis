@@ -52,6 +52,10 @@ export interface MorningAssessment {
 
 export interface DailySubjectiveContext {
   completed_at?: string; // ISO timestamp
+  scheduled_workday?: boolean; // Inferred from the user's configured weekly schedule
+  did_work?: boolean; // Actual work, including work performed on a scheduled day off
+  day_type?: "regular" | "business_trip" | "vacation" | "sick_day" | "day_off" | "other";
+  timezone?: string; // IANA timezone captured when the context was logged
   overall_stress?: number; // 0: Relaxed, 1: Mild, 2: Stressed, 3: Very stressed
   work_stress?: number; // 0: Calm, 1: Mild, 2: Stressed, 3: Overwhelming
   work_satisfaction?: number; // -1: No work, 0: Bad, 1: Frustrating, 2: Fine, 3: Satisfying
@@ -63,15 +67,37 @@ export interface DailySubjectiveContext {
 
 export interface PreSleepState {
   completed_at?: string; // ISO timestamp
+  capture_source?: "live" | "recalled_next_morning" | "recalled_later";
+  recalled_at?: string; // ISO timestamp, when retrospectively reconstructed
   mental_arousal?: number; // 0: Quiet, 1: Active, 2: Racing, 3: Can't switch off
   sleepiness?: number; // 0: Not sleepy, 1: Slightly sleepy, 2: Sleepy, 3: Struggling to stay awake
+}
+
+export type EventCaptureSource = "live" | "recalled_next_morning" | "recalled_later" | "wearable";
+
+export interface PlannedEveningEvent {
+  action_id: string;
+  action_label: string;
+  planned_timestamp: string; // ISO timestamp
 }
 
 export interface EveningActionLog {
   action_id: string; // e.g. "work_end", "screen_end", "winddown_start", "in_bed_ready", "lights_out", "caffeine", "meal_end"
   action_label: string;
   timestamp: string; // ISO timestamp
+  capture_source?: EventCaptureSource;
+  captured_at?: string; // When a retrospective value was entered
   meta?: Record<string, unknown>;
+}
+
+export interface DailyRoutineSession {
+  id: string;
+  activity_id: string;
+  slot: number; // 1-indexed target session
+  target_minutes: number;
+  started_at: string;
+  completed_at?: string;
+  source: "timer" | "manual";
 }
 
 export interface NapLog {
@@ -111,6 +137,8 @@ export interface NightRecord {
   prescribed_instruction: string;
   secondary_instruction?: string;
   evening_acknowledged_at?: string;
+  evening_plan?: PlannedEveningEvent[];
+  evening_plan_completed_at?: string;
   evening_actions: EveningActionLog[];
   
   // Daily context & behaviour
@@ -128,11 +156,16 @@ export interface NightRecord {
 
   naps?: NapLog[];
   caffeine_events?: CaffeineEventLog[];
+  routine_sessions?: DailyRoutineSession[];
   derived_intervals?: DerivedBehavioralIntervals;
 
   // Outcomes & physiological responses
   morning_assessment?: MorningAssessment;
   wearable_data?: WearableSleepData;
+  migration_archive?: {
+    simulated_wearable_data?: WearableSleepData;
+    simulated_food_records?: RawFoodRecord[];
+  };
   is_valid: boolean; // Evaluated by protocol engine based on adherence & unusual events
   exclusion_reason?: string;
   created_at: string;
@@ -142,6 +175,7 @@ export interface NightRecord {
 export type StudyStatus = "active" | "paused" | "completed";
 
 export interface StudyState {
+  data_schema_version?: number;
   study_id: string;
   status: StudyStatus;
   started_at: string;

@@ -27,9 +27,10 @@ export function BloatingLogger({ onLogBloating, existingEvents = [] }: BloatingL
 
   const handleSelectSeverity = (severity: BloatingSeverity) => {
     setSelectedSeverity(severity);
+    const timestamp = new Date().toISOString();
     const newEvent: BloatingEvent = {
-      id: `bloat_${Date.now()}`,
-      timestamp: new Date().toISOString(),
+      id: `bloat_${timestamp}`,
+      timestamp,
       severity,
     };
     onLogBloating(newEvent);

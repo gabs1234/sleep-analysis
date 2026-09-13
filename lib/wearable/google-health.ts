@@ -22,8 +22,8 @@ export interface GoogleHealthDiagnosticResult {
 
 export class GoogleHealthProvider implements WearableProvider {
   readonly id = "google_health";
-  readonly name = "Google Health Connect / Google Fit";
-  readonly description = "Syncs sleep duration, HRV, vitals, and nutrition automatically via Health Connect";
+  readonly name = "Google Fit REST (legacy)";
+  readonly description = "Reads available sleep, vitals, and nutrition streams from the legacy Google Fit REST API";
 
   private config: WearableProviderConfig = {
     provider_type: "google_health",
@@ -91,10 +91,6 @@ export class GoogleHealthProvider implements WearableProvider {
     }
 
     try {
-      const [year, month, day] = targetDate.split("-").map(Number);
-      const startTime = new Date(year, month - 1, day, 0, 0, 0);
-      const endTime = new Date(year, month - 1, day + 1, 14, 0, 0);
-
       const discoveredStreams: string[] = [];
 
       // 1. Check Data Sources API to discover all registered providers (e.g. Fitbit, MacroFactor)
@@ -110,7 +106,7 @@ export class GoogleHealthProvider implements WearableProvider {
         return {
           success: false,
           statusCode: sourcesRes.status,
-          message: `Google Health API returned ${sourcesRes.status}: ${sourcesRes.statusText}`,
+          message: `Google Fit API returned ${sourcesRes.status}: ${sourcesRes.statusText}`,
         };
       }
 
@@ -131,7 +127,7 @@ export class GoogleHealthProvider implements WearableProvider {
 
       return {
         success: true,
-        message: `Connected to Google Health Connect. Found ${discoveredStreams.length} active data streams and ${nutritionRecords.length} food record(s).`,
+        message: `Connected to Google Fit REST. Found ${discoveredStreams.length} active data streams and ${nutritionRecords.length} nutrition record(s).`,
         data: sleepData,
         nutritionRecords,
         discoveredDataStreams: discoveredStreams,
@@ -214,7 +210,8 @@ export class GoogleHealthProvider implements WearableProvider {
           fiber_g: Math.round((nutrientsMap["dietary_fiber"] || nutrientsMap["fiber"] || 0) * 10) / 10,
           sugar_g: Math.round((nutrientsMap["sugar"] || 0) * 10) / 10,
           caffeine_mg: Math.round(nutrientsMap["caffeine"] || 0),
-          source_app: "macrofactor",
+          source_app: p.originDataSourceId || "google_fit",
+          source: "google_fit",
           raw: p,
         });
       }
@@ -279,7 +276,8 @@ export class GoogleHealthProvider implements WearableProvider {
               fiber_g: Math.round((nutrientsMap["dietary_fiber"] || nutrientsMap["fiber"] || 0) * 10) / 10,
               sugar_g: Math.round((nutrientsMap["sugar"] || 0) * 10) / 10,
               caffeine_mg: Math.round(nutrientsMap["caffeine"] || 0),
-              source_app: "health_connect",
+              source_app: p.originDataSourceId || "google_fit_aggregate",
+              source: "google_fit",
               raw: p,
             });
           }

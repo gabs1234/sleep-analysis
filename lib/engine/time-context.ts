@@ -26,6 +26,16 @@ export function getActiveNightDateKey(currentTime: Date = new Date()): string {
 }
 
 /**
+ * Returns the date of the evening that preceded a morning check-in.
+ * A night is keyed by the civil date on which its evening began.
+ */
+export function getPreviousNightDateKey(currentTime: Date = new Date()): string {
+  const d = new Date(currentTime);
+  d.setDate(d.getDate() - 1);
+  return formatDateKey(d);
+}
+
+/**
  * Determines the current contextual screen view based on time of day,
  * study state, and completion of morning/evening interactions.
  */
@@ -35,7 +45,10 @@ export function determineTimeWindowContext(
   currentTime: Date = new Date()
 ): ContextualViewState {
   const hour = currentTime.getHours(); // 0 - 23
-  const activeNightKey = getActiveNightDateKey(currentTime);
+  const isMorning = hour >= 5 && hour < 14;
+  const activeNightKey = isMorning
+    ? getPreviousNightDateKey(currentTime)
+    : getActiveNightDateKey(currentTime);
 
   // Check if study is completed
   const { isAllPhasesComplete } = calculateStudyState(
@@ -60,8 +73,6 @@ export function determineTimeWindowContext(
   const activeRecord = state.records.find((r) => r.date === activeNightKey) || null;
 
   // Morning Window: 05:00 AM to 13:59 PM
-  const isMorning = hour >= 5 && hour < 14;
-
   if (isMorning) {
     // If morning check-in has NOT been completed yet, present Morning Check-in
     if (!activeRecord?.morning_assessment) {

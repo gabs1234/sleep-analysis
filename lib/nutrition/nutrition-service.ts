@@ -162,8 +162,8 @@ export function deriveNutritionSummary(
 
   const provenanceCounts: Record<string, number> = {};
 
-  let firstMealTime: string | undefined = points[0]?.timestamp;
-  let finalMealTime: string | undefined = points[points.length - 1]?.timestamp;
+  const firstMealTime: string | undefined = points[0]?.timestamp;
+  const finalMealTime: string | undefined = points[points.length - 1]?.timestamp;
   let finalCaloricTime: string | undefined = undefined;
   let finalCaffeineTime: string | undefined = undefined;
 

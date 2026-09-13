@@ -9,7 +9,6 @@ import { deriveBehavioralIntervals } from "../lib/engine/protocol-engine";
 import {
   generateStudyCSV,
   generateRawFoodRecordsCSV,
-  generateRawGISymptomsCSV,
   generateStudyJSON,
   importStudyJSON,
 } from "../lib/storage/data-export";
@@ -222,6 +221,21 @@ const dailyCsv = generateStudyCSV(config, state);
 console.assert(dailyCsv.includes("food_log_completeness"), "Daily CSV contains completeness column");
 console.assert(dailyCsv.includes("nutrition_provenance"), "Daily CSV contains provenance column");
 console.assert(dailyCsv.includes("mostly"), "Daily CSV records 'mostly' status");
+console.assert(dailyCsv.includes("evening_plan_summary"), "Daily CSV contains intention provenance");
+console.assert(dailyCsv.includes("daily_routine_minutes_completed"), "Daily CSV contains routine completion totals");
+const csvLines = dailyCsv.split("\n");
+const csvColumnCount = (line: string) => {
+  let count = 1;
+  let quoted = false;
+  for (let index = 0; index < line.length; index++) {
+    if (line[index] === '"') quoted = !quoted;
+    if (line[index] === "," && !quoted) count++;
+  }
+  return count;
+};
+if (!csvLines.slice(1).every((line) => csvColumnCount(line) === csvColumnCount(csvLines[0]))) {
+  throw new Error("Daily CSV header and data rows must have identical column counts");
+}
 
 const foodCsv = generateRawFoodRecordsCSV(state);
 console.assert(foodCsv.includes("Oatmeal with whey protein"), "Food CSV contains imported items");

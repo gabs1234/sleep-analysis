@@ -18,6 +18,8 @@ export default function SettingsPage() {
     importBackupData,
     wearableConfig,
     updateWearableConfig,
+    preferences,
+    updatePreferences,
     resetStudy,
     simulateAddCompletedNight,
   } = useStudySession();
@@ -74,7 +76,7 @@ export default function SettingsPage() {
       refresh_token: undefined,
     });
     setDiagnosticResult(null);
-    setSaveNotice("Disconnected Google Health account");
+    setSaveNotice("Disconnected Google Fit account");
     setTimeout(() => setSaveNotice(null), 3000);
   };
 
@@ -100,7 +102,7 @@ export default function SettingsPage() {
         const provider = new GoogleHealthProvider(wearableConfig);
         const result = await provider.testConnection(todayKey);
         setDiagnosticResult(result);
-      } else {
+      } else if (wearableConfig.provider_type === "mock") {
         const provider = new MockWearableProvider();
         const [data, nutrition] = await Promise.all([
           provider.fetchSleepData(todayKey),
@@ -116,6 +118,11 @@ export default function SettingsPage() {
             "Fitbit Charge 6 (Sleep & HR)",
             "Google Health Connect (Vitals)",
           ],
+        });
+      } else {
+        setDiagnosticResult({
+          success: false,
+          message: "No automatic health-data provider is connected.",
         });
       }
     } finally {
@@ -273,14 +280,55 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Personal defaults: intentionally stored separately from shareable study protocols. */}
+      <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-5">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-100">Personal defaults</h2>
+          <p className="text-xs text-zinc-400 mt-1">Customize the daily flow without editing source code or revealing what a private routine represents.</p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-xs font-mono text-zinc-400">NORMAL WORKDAYS</label>
+          <div className="grid grid-cols-7 gap-1">
+            {[{ day: 1, label: "M" }, { day: 2, label: "T" }, { day: 3, label: "W" }, { day: 4, label: "T" }, { day: 5, label: "F" }, { day: 6, label: "S" }, { day: 0, label: "S" }].map(({ day, label }) => {
+              const selected = preferences.work_days.includes(day);
+              return (
+                <button key={day} type="button" onClick={() => updatePreferences({ ...preferences, work_days: selected ? preferences.work_days.filter((item) => item !== day) : [...preferences.work_days, day] })} className={`aspect-square rounded-lg border text-xs font-mono ${selected ? "bg-zinc-100 text-black border-white" : "bg-zinc-900 text-zinc-400 border-zinc-800"}`}>{label}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        <label className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+          <span><span className="block text-xs font-medium text-zinc-200">Evening intention plan</span><span className="block text-[11px] text-zinc-500 mt-0.5">Plan meal, screen, wind-down and lights-out times.</span></span>
+          <input type="checkbox" checked={preferences.evening_plan_enabled} onChange={(event) => updatePreferences({ ...preferences, evening_plan_enabled: event.target.checked })} className="w-5 h-5 accent-violet-300" />
+        </label>
+
+        <div className="space-y-3 pt-1 border-t border-zinc-900">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-mono text-zinc-400">PRIVATE DAILY ROUTINE</label>
+            <input type="checkbox" checked={preferences.routine.enabled} onChange={(event) => updatePreferences({ ...preferences, routine: { ...preferences.routine, enabled: event.target.checked } })} className="w-5 h-5 accent-sky-300" />
+          </div>
+          <label className="block space-y-1.5">
+            <span className="text-[11px] text-zinc-400">Display name</span>
+            <input type="text" value={preferences.routine.label} onChange={(event) => updatePreferences({ ...preferences, routine: { ...preferences.routine, label: event.target.value } })} className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-100" />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1.5"><span className="text-[11px] text-zinc-400">Sessions per day</span><input type="number" min="1" max="12" value={preferences.routine.session_count} onChange={(event) => updatePreferences({ ...preferences, routine: { ...preferences.routine, session_count: Math.max(1, Math.min(12, Number(event.target.value) || 1)) } })} className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-100" /></label>
+            <label className="space-y-1.5"><span className="text-[11px] text-zinc-400">Minutes each</span><input type="number" min="1" max="180" value={preferences.routine.minutes_per_session} onChange={(event) => updatePreferences({ ...preferences, routine: { ...preferences.routine, minutes_per_session: Math.max(1, Math.min(180, Number(event.target.value) || 1)) } })} className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-100" /></label>
+          </div>
+          <p className="text-[11px] text-zinc-500">Default: four 15-minute sessions. Only this generic label and completion times are stored.</p>
+        </div>
+      </div>
+
       {/* 1. Wearable & Health Connect Data Sync */}
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-zinc-100">
-            Health Connect &amp; Wearable Sync
+            External health data
           </h2>
           <p className="text-xs text-zinc-400">
-            Automated silent ingestion of sleep sessions, HRV, resting HR, and raw MacroFactor food logs.
+            Inspect imported measurements and their source. The current web connector uses the legacy Google Fit REST API; it is not direct Android Health Connect access.
           </p>
         </div>
 
@@ -294,18 +342,18 @@ export default function SettingsPage() {
               onClick={() =>
                 updateWearableConfig({
                   ...wearableConfig,
-                  provider_type: "mock",
+                  provider_type: "manual",
                 })
               }
               className={`p-3 rounded-xl border text-xs font-medium text-left transition-all ${
-                wearableConfig.provider_type === "mock"
+                wearableConfig.provider_type === "manual"
                   ? "border-zinc-100 bg-zinc-900 text-white"
                   : "border-zinc-900 bg-zinc-950 text-zinc-400 hover:bg-zinc-900"
               }`}
             >
-              <div className="font-semibold">Mock Simulator</div>
+              <div className="font-semibold">No automatic sync</div>
               <div className="text-[11px] text-zinc-400 mt-0.5">
-                Local offline simulation
+                Manual and imported data only
               </div>
             </button>
 
@@ -323,9 +371,9 @@ export default function SettingsPage() {
                   : "border-zinc-900 bg-zinc-950 text-zinc-400 hover:bg-zinc-900"
               }`}
             >
-              <div className="font-semibold">Health Connect</div>
+              <div className="font-semibold">Google Fit REST</div>
               <div className="text-[11px] text-zinc-400 mt-0.5">
-                Google Health API (Fitbit/MacroFactor)
+                Legacy web connector
               </div>
             </button>
           </div>
@@ -339,7 +387,7 @@ export default function SettingsPage() {
                     <div className="flex items-center space-x-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                       <span className="text-xs font-semibold text-emerald-300">
-                        Health Connect Synced ✓
+                        Google Fit connected ✓
                       </span>
                     </div>
                     <span className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/20 px-2 py-0.5 rounded">
@@ -348,7 +396,7 @@ export default function SettingsPage() {
                   </div>
 
                   <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Sleep duration, sleep stages, HRV, resting HR, and timestamped MacroFactor food logs sync automatically in the background.
+                    Available sleep, vitals, and nutrition streams are refreshed after the morning check-in or when you request it. Source badges remain visible.
                   </p>
 
                   <div className="pt-1 flex items-center space-x-2">
@@ -445,7 +493,7 @@ export default function SettingsPage() {
                 {showSetupGuide && (
                   <div className="mt-3 p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 text-xs text-zinc-300 space-y-3 leading-relaxed">
                     <p className="font-semibold text-amber-300">
-                      Google Fit / Health Connect setup in Google Cloud Console:
+                      Legacy Google Fit REST setup in Google Cloud Console:
                     </p>
                     <ol className="list-decimal pl-4 space-y-2 text-[11px]">
                       <li>
@@ -478,7 +526,7 @@ export default function SettingsPage() {
               disabled={testingWearable}
               className="w-full py-2.5 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-xs font-mono text-zinc-200 active:scale-[0.98] transition-all"
             >
-              {testingWearable ? "Polling Health Connect streams..." : "⚡ Poll & Inspect Health Connect Streams"}
+              {testingWearable ? "Polling Google Fit streams..." : "Poll & inspect external streams"}
             </button>
 
             {diagnosticResult && (

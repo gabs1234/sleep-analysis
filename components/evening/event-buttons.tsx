@@ -33,8 +33,6 @@ export function EventButtons() {
   const [activePickerId, setActivePickerId] = useState<string | null>(null);
   const [customTimeInput, setCustomTimeInput] = useState<string>("");
   const [showExtraLoggers, setShowExtraLoggers] = useState(false);
-  const [caffeineAmount, setCaffeineAmount] = useState<number>(100);
-  const [napDuration, setNapDuration] = useState<number>(30);
 
   // Merge core actions with protocol-specific actions without duplicates
   const instructionActions = tonightInstruction.actions || [];
@@ -42,6 +40,7 @@ export function EventButtons() {
   const mergedActions: Array<{ id: string; label: string; description?: string }> = [];
 
   for (const act of [...CORE_ACTIONS, ...instructionActions]) {
+    if (act.id === "work_end" && activeRecord?.daily_context?.did_work === false) continue;
     if (!allActionIds.has(act.id)) {
       allActionIds.add(act.id);
       mergedActions.push(act);
@@ -81,7 +80,7 @@ export function EventButtons() {
   const handleQuickCaffeine = (mg: number) => {
     const nowIso = new Date().toISOString();
     logCaffeine({
-      id: `caff_${Date.now()}`,
+      id: `caff_${nowIso}`,
       timestamp: nowIso,
       amount_mg: mg,
       source: "manual_quick_button",
@@ -93,7 +92,7 @@ export function EventButtons() {
     const end = new Date();
     const start = new Date(end.getTime() - minutes * 60 * 1000);
     logNap({
-      id: `nap_${Date.now()}`,
+      id: `nap_${end.toISOString()}`,
       start_time: start.toISOString(),
       end_time: end.toISOString(),
       duration_minutes: minutes,
@@ -156,16 +155,6 @@ export function EventButtons() {
                       >
                         + Log now
                       </button>
-                      {act.id === "work_end" && (
-                        <button
-                          type="button"
-                          onClick={() => logEveningAction("work_end", "No work today", "NO_WORK")}
-                          className="px-2 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-mono text-[11px] transition-all"
-                          title="Mark no work done today"
-                        >
-                          Off
-                        </button>
-                      )}
                     </div>
                   )}
 
@@ -260,18 +249,6 @@ export function EventButtons() {
                     >
                       Set time
                     </button>
-                    {act.id === "work_end" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          logEveningAction("work_end", "No work today", "NO_WORK");
-                          setActivePickerId(null);
-                        }}
-                        className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-amber-300 text-xs font-mono transition-all"
-                      >
-                        No work today
-                      </button>
-                    )}
                   </div>
                 </div>
               )}

@@ -79,7 +79,6 @@ const QUESTIONS = [
 
 export function DailyContextCard({ initialData, onSave }: DailyContextCardProps) {
   const [data, setData] = useState<DailySubjectiveContext>(() => initialData || {});
-  const [isSaved, setIsSaved] = useState(Boolean(initialData?.completed_at));
 
   const handleSelect = (key: keyof DailySubjectiveContext, val: number) => {
     const updated = {
@@ -89,7 +88,6 @@ export function DailyContextCard({ initialData, onSave }: DailyContextCardProps)
     };
     setData(updated);
     onSave(updated);
-    setIsSaved(true);
   };
 
   const completedCount = [

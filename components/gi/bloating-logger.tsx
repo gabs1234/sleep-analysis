@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { BloatingSeverity, BloatingEvent } from "@/types/gi";
 import { formatLocalTime } from "@/lib/engine/protocol-engine";
+import { createClientId } from "@/lib/client-id";
 
 interface BloatingLoggerProps {
   onLogBloating: (event: BloatingEvent) => void;
@@ -29,7 +30,7 @@ export function BloatingLogger({ onLogBloating, existingEvents = [] }: BloatingL
     setSelectedSeverity(severity);
     const timestamp = new Date().toISOString();
     const newEvent: BloatingEvent = {
-      id: `bloat_${timestamp}`,
+      id: createClientId("bloat"),
       timestamp,
       severity,
     };

@@ -3,15 +3,13 @@
 import React, { useState } from "react";
 import { useStudySession } from "@/context/study-context";
 import { MorningCheckin } from "@/components/morning/morning-checkin";
-import { MorningRepairCard } from "@/components/morning/morning-repair-card";
 import { EveningQuestionnaire } from "@/components/evening/evening-questionnaire";
 import { EveningPlanCard } from "@/components/evening/evening-plan-card";
 import { PhaseTransitionCard } from "@/components/study/phase-transition-card";
-import { EventButtons } from "@/components/evening/event-buttons";
 import { GITracker } from "@/components/gi/gi-tracker";
 import { DailyRoutineCard } from "@/components/routine/daily-routine-card";
-import { ExternalDataCard } from "@/components/data/external-data-card";
-import { formatDateKey, formatLocalTime } from "@/lib/engine/protocol-engine";
+import { formatLocalTime } from "@/lib/engine/protocol-engine";
+import { getActiveNightDateKey } from "@/lib/engine/time-context";
 
 export default function HomePage() {
   const {
@@ -22,13 +20,14 @@ export default function HomePage() {
     currentPhaseProgress,
     activePhase,
     state,
+    persistenceStatus,
     logBloatingEvent,
     logBowelMovement,
   } = useStudySession();
   const [activeFlow, setActiveFlow] = useState<"morning" | "evening" | null>(null);
   const activeNightKey = viewContext.todayDateKey;
   const activeRecord = state.records.find((record) => record.date === activeNightKey);
-  const tonightDateKey = formatDateKey();
+  const tonightDateKey = getActiveNightDateKey();
   const tonightRecord = state.records.find((record) => record.date === tonightDateKey);
   const isMorning = viewContext.isMorningWindow;
   const isMorningDone = Boolean(activeRecord?.morning_assessment?.completed_at);
@@ -44,7 +43,7 @@ export default function HomePage() {
   }
 
   if (activeFlow === "morning") {
-    return <MorningCheckin initialData={activeRecord?.morning_assessment} onComplete={() => setActiveFlow(null)} onClose={() => setActiveFlow(null)} />;
+    return <MorningCheckin initialData={activeRecord?.morning_assessment} hasEveningPlan={Boolean(activeRecord?.evening_plan?.length)} onComplete={() => setActiveFlow(null)} onClose={() => setActiveFlow(null)} />;
   }
 
   if (activeFlow === "evening") {
@@ -68,7 +67,14 @@ export default function HomePage() {
         <span>VALID {currentPhaseProgress.validNightsLogged} / {activePhase.valid_nights_required}</span>
       </div>
 
+      {persistenceStatus.phase === "error" && (
+        <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2 text-[11px] text-rose-300">
+          Local storage fell back to recovery mode. Your entry is still being kept on this device; details are in Settings.
+        </div>
+      )}
+
       <DailyRoutineCard />
+      <GITracker bloatingEvents={tonightRecord?.bloating_events} bowelMovements={tonightRecord?.bowel_movements} onLogBloating={logBloatingEvent} onLogBowelMovement={logBowelMovement} />
 
       {viewContext.context === "phase_transition" ? (
         <PhaseTransitionCard message={viewContext.phaseTransitionMessage} />
@@ -86,8 +92,6 @@ export default function HomePage() {
             </button>
           </section>
 
-          <MorningRepairCard date={activeNightKey} record={activeRecord} />
-          {isMorningDone && <ExternalDataCard date={activeNightKey} record={activeRecord} />}
           {isMorningDone && <EveningPlanCard date={tonightDateKey} record={tonightRecord} />}
         </>
       ) : (
@@ -114,8 +118,6 @@ export default function HomePage() {
             </button>
           </section>
 
-          <GITracker bloatingEvents={activeRecord?.bloating_events} bowelMovements={activeRecord?.bowel_movements} onLogBloating={logBloatingEvent} onLogBowelMovement={logBowelMovement} />
-          <EventButtons />
         </>
       )}
     </main>

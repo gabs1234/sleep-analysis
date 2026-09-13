@@ -17,6 +17,11 @@ export function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
 }
 
+export function hasLegacyStoredData(): boolean {
+  if (!isBrowser()) return false;
+  return Object.values(STORAGE_KEYS).some((key) => localStorage.getItem(key) !== null);
+}
+
 export function loadStoredStudyConfig(): ExperimentConfig {
   if (!isBrowser()) return DEFAULT_STUDY_CONFIG;
   try {
@@ -266,4 +271,9 @@ export function clearAllStudyData(): void {
   localStorage.removeItem(STORAGE_KEYS.CONFIG);
   localStorage.removeItem(STORAGE_KEYS.STATE);
   localStorage.removeItem(STORAGE_KEYS.WEARABLE);
+}
+
+export function clearStoredStudyState(): void {
+  if (!isBrowser()) return;
+  localStorage.removeItem(STORAGE_KEYS.STATE);
 }

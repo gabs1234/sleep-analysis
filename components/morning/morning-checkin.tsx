@@ -6,9 +6,12 @@ import { WakeReason, ProtocolAdherence, UnusualNightReason, MorningAssessment } 
 
 interface MorningCheckinProps {
   initialData?: MorningAssessment;
+  hasEveningPlan?: boolean;
   onComplete?: () => void;
   onClose?: () => void;
 }
+
+type MorningStep = "readiness" | "quality" | "wake" | "protocol" | "plan" | "context";
 
 const READINESS_OPTIONS = [
   { value: 0, label: "0 — Wrecked", description: "Exhausted, brain fog, struggling" },
@@ -43,68 +46,72 @@ const UNUSUAL_TAGS: Array<{ value: UnusualNightReason; label: string }> = [
   { value: "other", label: "Other abnormal factor" },
 ];
 
-export function MorningCheckin({ initialData, onComplete, onClose }: MorningCheckinProps) {
+export function MorningCheckin({ initialData, hasEveningPlan = false, onComplete, onClose }: MorningCheckinProps) {
   const { activePhase, submitMorningAssessment } = useStudySession();
 
-  const [step, setStep] = useState<number>(1);
+  const [stepIndex, setStepIndex] = useState(0);
   const [readiness, setReadiness] = useState<number | null>(() => initialData?.readiness ?? null);
   const [sleepQuality, setSleepQuality] = useState<number | null>(() => initialData?.sleep_quality ?? null);
   const [wakeReason, setWakeReason] = useState<WakeReason | null>(() => initialData?.wake_reason ?? null);
   const [adherence, setAdherence] = useState<ProtocolAdherence | null>(() => initialData?.protocol_adherence ?? null);
   const [adherenceNote, setAdherenceNote] = useState<string>(() => initialData?.adherence_note ?? "");
+  const [planAdherence, setPlanAdherence] = useState<ProtocolAdherence | null>(() => initialData?.evening_plan_adherence ?? null);
+  const [planAdherenceNote, setPlanAdherenceNote] = useState<string>(() => initialData?.evening_plan_adherence_note ?? "");
   const [isUnusual, setIsUnusual] = useState<boolean | null>(() => initialData ? initialData.unusual_night : null);
   const [unusualReasons, setUnusualReasons] = useState<UnusualNightReason[]>(() => initialData?.unusual_reasons ?? []);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDone, setIsDone] = useState(false);
 
   const hasIntervention = activePhase.type === "randomized_experiment";
-  const totalSteps = hasIntervention ? 5 : 4;
+  const steps: MorningStep[] = [
+    "readiness",
+    "quality",
+    "wake",
+    ...(hasIntervention ? (["protocol"] as MorningStep[]) : []),
+    ...(hasEveningPlan ? (["plan"] as MorningStep[]) : []),
+    "context",
+  ];
+  const step = steps[stepIndex];
+  const totalSteps = steps.length;
 
   const handlePrevStep = () => {
-    if (step > 1) {
-      if (step === 5 && !hasIntervention) {
-        setStep(3);
-      } else {
-        setStep(step - 1);
-      }
-    }
+    setStepIndex((current) => Math.max(0, current - 1));
   };
 
   const handleNextStep = () => {
-    if (step === 3 && !hasIntervention) {
-      setStep(5);
-    } else if (step < 5) {
-      setStep(step + 1);
-    }
+    setStepIndex((current) => Math.min(steps.length - 1, current + 1));
   };
 
   // Step 1: Readiness Selected
   const handleReadinessSelect = (val: number) => {
     setReadiness(val);
-    setStep(2);
+    handleNextStep();
   };
 
   // Step 2: Sleep Quality Selected
   const handleSleepQualitySelect = (val: number) => {
     setSleepQuality(val);
-    setStep(3);
+    handleNextStep();
   };
 
   // Step 3: Wake Reason Selected
   const handleWakeReasonSelect = (val: WakeReason) => {
     setWakeReason(val);
-    if (hasIntervention) {
-      setStep(4);
-    } else {
-      setStep(5);
-    }
+    handleNextStep();
   };
 
   // Step 4: Adherence Selected
   const handleAdherenceSelect = (val: ProtocolAdherence) => {
     setAdherence(val);
     if (val === "yes") {
-      setStep(5);
+      handleNextStep();
+    }
+  };
+
+  const handlePlanAdherenceSelect = (val: ProtocolAdherence) => {
+    setPlanAdherence(val);
+    if (val === "yes") {
+      handleNextStep();
     }
   };
 
@@ -139,6 +146,8 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
         wake_reason: wakeReason,
         protocol_adherence: adherence || undefined,
         adherence_note: adherenceNote.trim() || undefined,
+        evening_plan_adherence: planAdherence || undefined,
+        evening_plan_adherence_note: planAdherenceNote.trim() || undefined,
         unusual_night: unusualFlag,
         unusual_reasons: tags.length > 0 ? tags : undefined,
       });
@@ -149,7 +158,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
     }
   };
 
-  const currentDisplayStep = step === 5 && !hasIntervention ? 4 : step;
+  const currentDisplayStep = stepIndex + 1;
 
   if (isDone) {
     return (
@@ -184,7 +193,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
       {/* Top Navigation Bar */}
       <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
         <div className="flex items-center space-x-2">
-          {step > 1 ? (
+          {stepIndex > 0 ? (
             <button
               type="button"
               onClick={handlePrevStep}
@@ -223,7 +232,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
       </div>
 
       {/* Step 1: Readiness */}
-      {step === 1 && (
+      {step === "readiness" && (
         <div className="space-y-5 animate-fade-in">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
@@ -272,7 +281,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
       )}
 
       {/* Step 2: Sleep Quality */}
-      {step === 2 && (
+      {step === "quality" && (
         <div className="space-y-5 animate-fade-in">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
@@ -321,7 +330,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
       )}
 
       {/* Step 3: Wake Reason */}
-      {step === 3 && (
+      {step === "wake" && (
         <div className="space-y-5 animate-fade-in">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
@@ -373,7 +382,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
       )}
 
       {/* Step 4: Adherence (if intervention active) */}
-      {step === 4 && hasIntervention && (
+      {step === "protocol" && (
         <div className="space-y-5 animate-fade-in">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
@@ -414,7 +423,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
               />
               <button
                 type="button"
-                onClick={() => setStep(5)}
+                onClick={handleNextStep}
                 className="w-full py-3 rounded-xl bg-zinc-200 text-black font-semibold text-sm hover:bg-white active:scale-[0.98] transition-all"
               >
                 Continue →
@@ -426,7 +435,7 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
             <div className="flex justify-end pt-2">
               <button
                 type="button"
-                onClick={() => setStep(5)}
+                onClick={handleNextStep}
                 className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono font-semibold transition-all"
               >
                 Next →
@@ -436,8 +445,71 @@ export function MorningCheckin({ initialData, onComplete, onClose }: MorningChec
         </div>
       )}
 
-      {/* Step 5: Unusual Night / Confounders */}
-      {step === 5 && (
+      {step === "plan" && (
+        <div className="space-y-5 animate-fade-in">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
+              Did you roughly follow your evening plan?
+            </h1>
+            <p className="text-xs text-zinc-400">
+              Compare what happened with the times you intended. This records behavior and does not invalidate the night.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2.5">
+            {(["yes", "mostly", "no"] as ProtocolAdherence[]).map((val) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => handlePlanAdherenceSelect(val)}
+                className={`py-4 rounded-xl border font-semibold capitalize text-center transition-all ${
+                  planAdherence === val
+                    ? "border-zinc-100 bg-zinc-100 text-black"
+                    : "border-zinc-800 bg-zinc-900/60 text-zinc-200 hover:bg-zinc-800"
+                }`}
+              >
+                {val}
+              </button>
+            ))}
+          </div>
+
+          {planAdherence && planAdherence !== "yes" && (
+            <div className="space-y-3 pt-2">
+              <label className="block text-xs font-mono text-zinc-400">
+                WHAT CHANGED? (OPTIONAL)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Fell asleep before wind-down, ate later than planned"
+                value={planAdherenceNote}
+                onChange={(e) => setPlanAdherenceNote(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm text-zinc-100 focus:outline-none focus:border-zinc-600"
+              />
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="w-full py-3 rounded-xl bg-zinc-200 text-black font-semibold text-sm hover:bg-white active:scale-[0.98] transition-all"
+              >
+                Continue →
+              </button>
+            </div>
+          )}
+
+          {planAdherence === "yes" && (
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono font-semibold transition-all"
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Final step: Night context / confounders */}
+      {step === "context" && (
         <div className="space-y-5 animate-fade-in">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">

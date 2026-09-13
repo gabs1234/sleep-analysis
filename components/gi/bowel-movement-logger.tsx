@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { BristolStoolType, BowelUrgency, BowelMovementEvent } from "@/types/gi";
 import { formatLocalTime } from "@/lib/engine/protocol-engine";
+import { createClientId } from "@/lib/client-id";
 
 interface BowelMovementLoggerProps {
   onLogBowelMovement: (event: BowelMovementEvent) => void;
@@ -45,7 +46,7 @@ export function BowelMovementLogger({ onLogBowelMovement, existingEvents = [] }:
   const handleFinish = () => {
     if (!selectedBristol) return;
     const newEvent: BowelMovementEvent = {
-      id: `bm_${Date.now()}`,
+      id: createClientId("bm"),
       timestamp: new Date().toISOString(),
       bristol_type: selectedBristol,
       urgency: selectedUrgency,

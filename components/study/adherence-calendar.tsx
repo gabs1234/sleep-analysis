@@ -25,6 +25,35 @@ const UNUSUAL_TAGS: Array<{ value: UnusualNightReason; label: string }> = [
   { value: "other", label: "Other abnormal factor" },
 ];
 
+function getMissingDetails(record: NightRecord | null): string[] {
+  if (!record) return ["day entry"];
+
+  const actualIds = new Set(
+    record.evening_actions
+      .filter((action) => action.timestamp !== "NO_WORK")
+      .map((action) => action.action_id)
+  );
+  const expectedEvents = record.evening_plan?.length
+    ? record.evening_plan.map((item) => ({ id: item.action_id, label: item.action_label }))
+    : EDITABLE_EVENTS.filter((event) => event.id !== "work_end");
+  const missing = expectedEvents
+    .filter((event) => event.id !== "work_end" || record.daily_context?.did_work !== false)
+    .filter((event) => !actualIds.has(event.id))
+    .map((event) => event.label.toLowerCase());
+
+  if (!record.daily_context || record.daily_context.did_work === undefined) {
+    missing.push("day/work context");
+  }
+  if (
+    record.pre_sleep_state?.mental_arousal === undefined ||
+    record.pre_sleep_state?.sleepiness === undefined
+  ) {
+    missing.push("pre-sleep state");
+  }
+
+  return [...new Set(missing)];
+}
+
 export function AdherenceCalendar() {
   const { state, updateNightRecord, deleteNightRecord, syncWearableForDate } = useStudySession();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -37,6 +66,8 @@ export function AdherenceCalendar() {
   const [editQuality, setEditQuality] = useState<number>(2);
   const [editWakeReason, setEditWakeReason] = useState<WakeReason>("natural");
   const [editAdherence, setEditAdherence] = useState<ProtocolAdherence>("yes");
+  const [editPlanAdherence, setEditPlanAdherence] = useState<ProtocolAdherence>("yes");
+  const [editPlanAdherenceNote, setEditPlanAdherenceNote] = useState<string>("");
   const [editUnusual, setEditUnusual] = useState<boolean>(false);
   const [editUnusualReasons, setEditUnusualReasons] = useState<UnusualNightReason[]>([]);
   const [editReasonNote, setEditReasonNote] = useState<string>("");
@@ -59,6 +90,11 @@ export function AdherenceCalendar() {
     studyStart.setHours(0, 0, 0, 0);
 
     const daysToShow = 28;
+    const currentWeekMonday = new Date(today);
+    const mondayOffset = (today.getDay() + 6) % 7;
+    currentWeekMonday.setDate(today.getDate() - mondayOffset);
+    const gridStart = new Date(currentWeekMonday);
+    gridStart.setDate(currentWeekMonday.getDate() - 21);
     const days: Array<{
       date: Date;
       dateStr: string;
@@ -71,13 +107,13 @@ export function AdherenceCalendar() {
       status: "valid" | "excluded" | "missed" | "future" | "today_pending";
     }> = [];
 
-    for (let i = daysToShow - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
+    for (let i = 0; i < daysToShow; i++) {
+      const d = new Date(gridStart);
+      d.setDate(gridStart.getDate() + i);
       const dateStr = formatDateKey(d);
 
       const record = state.records.find((r) => r.date === dateStr) || null;
-      const isToday = i === 0;
+      const isToday = d.getTime() === today.getTime();
       const isFuture = d > today;
       const isBeforeStart = d < studyStart;
 
@@ -130,7 +166,9 @@ export function AdherenceCalendar() {
     const totalDays = tracked + missed;
     const adherencePct = totalDays > 0 ? Math.round((valid / totalDays) * 100) : 100;
 
-    return { valid, excluded, missed, tracked, adherencePct };
+    const gaps = calendarDays.filter((day) => day.record && getMissingDetails(day.record).length > 0).length;
+
+    return { valid, excluded, missed, tracked, adherencePct, gaps };
   }, [calendarDays]);
 
   const selectedRecord = useMemo(() => {
@@ -150,6 +188,8 @@ export function AdherenceCalendar() {
       setEditQuality(existing.morning_assessment?.sleep_quality ?? 2);
       setEditWakeReason(existing.morning_assessment?.wake_reason ?? "natural");
       setEditAdherence(existing.morning_assessment?.protocol_adherence ?? "yes");
+      setEditPlanAdherence(existing.morning_assessment?.evening_plan_adherence ?? "yes");
+      setEditPlanAdherenceNote(existing.morning_assessment?.evening_plan_adherence_note ?? "");
       setEditUnusual(existing.morning_assessment?.unusual_night ?? false);
       setEditUnusualReasons(existing.morning_assessment?.unusual_reasons || []);
       setEditReasonNote(existing.exclusion_reason || existing.morning_assessment?.adherence_note || "");
@@ -165,6 +205,8 @@ export function AdherenceCalendar() {
       setEditQuality(2);
       setEditWakeReason("natural");
       setEditAdherence("yes");
+      setEditPlanAdherence("yes");
+      setEditPlanAdherenceNote("");
       setEditUnusual(false);
       setEditUnusualReasons([]);
       setEditReasonNote("");
@@ -214,6 +256,10 @@ export function AdherenceCalendar() {
         wake_reason: editWakeReason,
         protocol_adherence: editAdherence,
         adherence_note: editReasonNote.trim() || undefined,
+        evening_plan_adherence: selectedRecord?.evening_plan?.length ? editPlanAdherence : undefined,
+        evening_plan_adherence_note: selectedRecord?.evening_plan?.length
+          ? editPlanAdherenceNote.trim() || undefined
+          : undefined,
         unusual_night: editUnusual,
         unusual_reasons: editUnusualReasons.length > 0 ? editUnusualReasons : undefined,
       } : selectedRecord?.morning_assessment,
@@ -312,7 +358,7 @@ export function AdherenceCalendar() {
             {stats.adherencePct}% ADHERENCE
           </div>
           <div className="text-[10px] font-mono text-zinc-400">
-            {stats.valid} valid • {stats.excluded} excluded
+            {stats.valid} valid • {stats.excluded} excluded{stats.gaps > 0 ? ` • ${stats.gaps} to amend` : ""}
           </div>
         </div>
       </div>
@@ -340,6 +386,7 @@ export function AdherenceCalendar() {
         <div className="grid grid-cols-7 gap-1.5">
           {calendarDays.map((day) => {
             const isSelected = selectedDate === day.dateStr;
+            const hasGaps = Boolean(day.record && getMissingDetails(day.record).length > 0);
             return (
               <button
                 key={day.dateStr}
@@ -348,13 +395,15 @@ export function AdherenceCalendar() {
                   setSelectedDate(day.dateStr);
                   setIsEditing(false);
                 }}
-                title={`${day.dateStr}: ${day.status}`}
-                className={`h-9 rounded-lg flex flex-col items-center justify-center font-mono text-xs font-semibold transition-all cursor-pointer ${getStatusColor(
+                disabled={day.isFuture}
+                title={`${day.dateStr}: ${day.status}${hasGaps ? ", details missing" : ""}`}
+                className={`relative h-9 rounded-lg flex flex-col items-center justify-center font-mono text-xs font-semibold transition-all disabled:cursor-default ${day.isFuture ? "cursor-default" : "cursor-pointer"} ${getStatusColor(
                   day.status,
                   isSelected
                 )}`}
               >
                 <span>{day.dayNumber}</span>
+                {hasGaps && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-violet-300 ring-1 ring-black" />}
               </button>
             );
           })}
@@ -378,6 +427,12 @@ export function AdherenceCalendar() {
           <span>Missed ({stats.missed})</span>
         </div>
       </div>
+      {stats.gaps > 0 && (
+        <div className="flex items-center gap-2 text-[10px] text-violet-300/80">
+          <span className="h-1.5 w-1.5 rounded-full bg-violet-300" />
+          <span>A violet dot means the day has reconstructable details missing. Tap it to fill gaps.</span>
+        </div>
+      )}
 
       {/* Selected Day Inspector View */}
       {selectedDate && !isEditing && (
@@ -407,6 +462,15 @@ export function AdherenceCalendar() {
                 : "Not Recorded"}
             </span>
           </div>
+
+          {getMissingDetails(selectedRecord).length > 0 && (
+            <div className="rounded-lg border border-violet-500/25 bg-violet-500/10 p-2.5 text-[11px] text-violet-200">
+              <div className="font-semibold">Details you can add or amend</div>
+              <div className="mt-1 text-violet-300/80">
+                {getMissingDetails(selectedRecord).join(" • ")}
+              </div>
+            </div>
+          )}
 
           {selectedRecord ? (
             <div className="space-y-1.5 text-zinc-400 font-mono text-[11px] pt-1 border-t border-zinc-800/80">
@@ -448,11 +512,19 @@ export function AdherenceCalendar() {
               )}
 
               {selectedRecord.morning_assessment && (
-                <div className="text-zinc-300">
-                  Readiness: {selectedRecord.morning_assessment.readiness}/3 • Quality:{" "}
-                  {selectedRecord.morning_assessment.sleep_quality}/3 • Wake:{" "}
-                  {selectedRecord.morning_assessment.wake_reason}
-                </div>
+                <>
+                  <div className="text-zinc-300">
+                    Readiness: {selectedRecord.morning_assessment.readiness}/3 • Quality:{" "}
+                    {selectedRecord.morning_assessment.sleep_quality}/3 • Wake:{" "}
+                    {selectedRecord.morning_assessment.wake_reason}
+                  </div>
+                  {selectedRecord.morning_assessment.evening_plan_adherence && (
+                    <div className="text-violet-300">
+                      Followed evening plan: {selectedRecord.morning_assessment.evening_plan_adherence}
+                      {selectedRecord.morning_assessment.evening_plan_adherence_note ? ` • ${selectedRecord.morning_assessment.evening_plan_adherence_note}` : ""}
+                    </div>
+                  )}
+                </>
               )}
 
               {selectedRecord.wearable_data && (
@@ -487,7 +559,7 @@ export function AdherenceCalendar() {
                 onClick={() => startEditing(selectedDate)}
                 className="px-3 py-1.5 rounded-lg bg-zinc-100 text-black font-semibold text-xs hover:bg-white transition-all"
               >
-                ✏ Amend / Edit
+                {selectedRecord ? (getMissingDetails(selectedRecord).length > 0 ? "Fill gaps / amend" : "Amend entry") : "Add entry"}
               </button>
 
               <button
@@ -660,6 +732,39 @@ export function AdherenceCalendar() {
               ))}
             </div>
           </div>
+
+          {Boolean(selectedRecord?.evening_plan?.length) && (
+            <div className="space-y-2 rounded-lg border border-violet-500/20 bg-violet-500/5 p-2.5">
+              <label className="block text-[11px] font-mono text-violet-300">
+                EVENING PLAN FOLLOWED? (DOES NOT CONTROL VALIDITY)
+              </label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(["yes", "mostly", "no"] as ProtocolAdherence[]).map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setEditPlanAdherence(val)}
+                    className={`py-1.5 rounded capitalize font-mono font-semibold transition-all ${
+                      editPlanAdherence === val
+                        ? "bg-violet-200 text-violet-950"
+                        : "bg-zinc-950 border border-zinc-800 text-zinc-400 hover:bg-zinc-800"
+                    }`}
+                  >
+                    {val}
+                  </button>
+                ))}
+              </div>
+              {editPlanAdherence !== "yes" && (
+                <input
+                  type="text"
+                  value={editPlanAdherenceNote}
+                  onChange={(event) => setEditPlanAdherenceNote(event.target.value)}
+                  placeholder="What changed from the plan? (optional)"
+                  className="w-full px-3 py-2 rounded bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-violet-500/50"
+                />
+              )}
+            </div>
+          )}
 
           {/* 5. Unusual Factors */}
           <div className="space-y-1.5">

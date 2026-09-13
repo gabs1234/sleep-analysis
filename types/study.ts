@@ -45,6 +45,8 @@ export interface MorningAssessment {
   wake_reason_detail?: string;
   protocol_adherence?: ProtocolAdherence;
   adherence_note?: string;
+  evening_plan_adherence?: ProtocolAdherence;
+  evening_plan_adherence_note?: string;
   unusual_night: boolean;
   unusual_reasons?: UnusualNightReason[];
   unusual_note?: string;

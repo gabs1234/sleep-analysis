@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   useSyncExternalStore,
   ReactNode,
 } from "react";
@@ -30,6 +31,7 @@ import {
 } from "@/types/nutrition";
 import { WearableProviderConfig } from "@/types/wearable";
 import { UserPreferences } from "@/types/preferences";
+import { PersistenceStatus } from "@/types/persistence";
 import {
   formatDateKey,
   calculateStudyState,
@@ -53,11 +55,20 @@ import {
   saveStoredStudyState,
   loadWearableConfig,
   saveWearableConfig,
-  clearAllStudyData,
+  clearStoredStudyState,
   loadUserPreferences,
   saveUserPreferences,
   migrateStoredStudyState,
+  hasLegacyStoredData,
 } from "@/lib/storage/study-storage";
+import {
+  BrowserStorageSnapshot,
+  initializeBrowserStorage,
+  persistStudyConfig,
+  persistStudyState,
+  persistUserPreferences,
+  persistWearableConfig,
+} from "@/lib/storage/indexed-db-storage";
 import { MockWearableProvider } from "@/lib/wearable/mock-wearable";
 import { GoogleHealthProvider } from "@/lib/wearable/google-health";
 import { deriveNutritionSummary } from "@/lib/nutrition/nutrition-service";
@@ -72,6 +83,7 @@ interface StudyContextType {
   allPhaseProgresses: PhaseProgress[];
   wearableConfig: WearableProviderConfig;
   preferences: UserPreferences;
+  persistenceStatus: PersistenceStatus;
   isReady: boolean;
 
   // Actions
@@ -107,7 +119,7 @@ const StudyContext = createContext<StudyContextType | undefined>(undefined);
 const emptySubscribe = () => () => {};
 
 export function StudyProvider({ children }: { children: ReactNode }) {
-  const isReady = useSyncExternalStore(
+  const clientReady = useSyncExternalStore(
     emptySubscribe,
     () => true,
     () => false
@@ -127,21 +139,135 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       if (token) {
         stored.provider_type = "google_health";
         stored.access_token = token;
-        saveWearableConfig(stored);
-        window.history.replaceState(null, "", window.location.pathname);
       }
     }
     return stored;
   });
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadUserPreferences());
+  const [storageReady, setStorageReady] = useState(false);
+  const [persistenceStatus, setPersistenceStatus] = useState<PersistenceStatus>({
+    backend: "indexeddb",
+    phase: "loading",
+    pending_mutations: 0,
+    migrated_from_local_storage: false,
+  });
   const [timeTick, setTimeTick] = useState(0);
+  const initialSnapshot = useRef<BrowserStorageSnapshot>({
+    config,
+    state,
+    wearableConfig,
+    preferences,
+  });
+  const isReady = clientReady && storageReady;
 
-  // Save changes to storage whenever state updates
+  // Hydrate IndexedDB once, using the old localStorage values as a migration
+  // source. The page remains in its loading state until the durable snapshot
+  // has won, avoiding a default-state flash that could overwrite real data.
   useEffect(() => {
-    if (isReady) {
-      saveStoredStudyState(state);
-    }
-  }, [state, isReady]);
+    if (!clientReady) return;
+    let cancelled = false;
+
+    initializeBrowserStorage(initialSnapshot.current, hasLegacyStoredData())
+      .then(({ snapshot, status }) => {
+        if (cancelled) return;
+        const hydratedState = migrateStoredStudyState(snapshot.state, snapshot.config);
+        const hashParams = new URLSearchParams(window.location.hash.slice(1));
+        const queryParams = new URLSearchParams(window.location.search);
+        const accessToken = hashParams.get("access_token") || queryParams.get("access_token");
+        const hydratedWearable = accessToken
+          ? {
+              ...snapshot.wearableConfig,
+              provider_type: "google_health" as const,
+              access_token: accessToken,
+            }
+          : snapshot.wearableConfig;
+
+        setConfig(snapshot.config);
+        setState(hydratedState);
+        setWearableConfigState(hydratedWearable);
+        setPreferences(snapshot.preferences);
+        setPersistenceStatus(status);
+        setStorageReady(true);
+
+        if (accessToken) {
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("IndexedDB initialization failed; using localStorage fallback:", error);
+        setPersistenceStatus({
+          backend: "localstorage",
+          phase: "error",
+          pending_mutations: 0,
+          last_saved_at: new Date().toISOString(),
+          migrated_from_local_storage: false,
+          error: error instanceof Error ? error.message : "IndexedDB initialization failed",
+        });
+        setStorageReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientReady]);
+
+  const trackPersistence = useCallback(
+    (operation: () => Promise<PersistenceStatus>, fallback: () => void) => {
+      if (!storageReady) return;
+      queueMicrotask(() => {
+        if (persistenceStatus.backend === "localstorage") {
+          fallback();
+          setPersistenceStatus((current) => ({
+            ...current,
+            phase: current.error ? "error" : "ready",
+            last_saved_at: new Date().toISOString(),
+          }));
+          return;
+        }
+
+        setPersistenceStatus((current) => ({ ...current, phase: "saving", error: undefined }));
+        void operation()
+          .then((status) => {
+            setPersistenceStatus((current) => ({
+              ...current,
+              ...status,
+              persistent_storage: current.persistent_storage,
+              usage_bytes: current.usage_bytes,
+              quota_bytes: current.quota_bytes,
+            }));
+          })
+          .catch((error) => {
+            console.error("IndexedDB write failed; preserving data in localStorage:", error);
+            fallback();
+            setPersistenceStatus((current) => ({
+              ...current,
+              backend: "localstorage",
+              phase: "error",
+              last_saved_at: new Date().toISOString(),
+              error: error instanceof Error ? error.message : "IndexedDB write failed",
+            }));
+          });
+      });
+    },
+    [persistenceStatus.backend, storageReady]
+  );
+
+  useEffect(() => {
+    trackPersistence(() => persistStudyState(state), () => saveStoredStudyState(state));
+  }, [state, trackPersistence]);
+
+  useEffect(() => {
+    trackPersistence(() => persistStudyConfig(config), () => saveStoredStudyConfig(config));
+  }, [config, trackPersistence]);
+
+  useEffect(() => {
+    trackPersistence(() => persistWearableConfig(wearableConfig), () => saveWearableConfig(wearableConfig));
+  }, [trackPersistence, wearableConfig]);
+
+  useEffect(() => {
+    trackPersistence(() => persistUserPreferences(preferences), () => saveUserPreferences(preferences));
+  }, [preferences, trackPersistence]);
 
   // Automatically fetch server environment config
   useEffect(() => {
@@ -156,7 +282,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                   ...prev,
                   client_id: data.googleClientId,
                 };
-                saveWearableConfig(updated);
                 return updated;
               }
               return prev;
@@ -1061,7 +1186,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const updateStudyConfig = useCallback(
     (newConfig: ExperimentConfig, preserveRecords: boolean = true) => {
       setConfig(newConfig);
-      saveStoredStudyConfig(newConfig);
 
       setState((prev) => {
         const recordsToKeep = preserveRecords ? prev.records : [];
@@ -1075,7 +1199,6 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           current_night_id: prev.current_night_id || formatDateKey(),
           last_active_at: new Date().toISOString(),
         };
-        saveStoredStudyState(newState);
         return newState;
       });
     },
@@ -1089,10 +1212,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       const migratedState = migrateStoredStudyState(importedState, effectiveConfig);
       if (importedConfig) {
         setConfig(importedConfig);
-        saveStoredStudyConfig(importedConfig);
       }
       setState(migratedState);
-      saveStoredStudyState(migratedState);
     },
     [config]
   );
@@ -1109,20 +1230,21 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   // Action: Update wearable config
   const updateWearableConfig = useCallback((newConfig: WearableProviderConfig) => {
     setWearableConfigState(newConfig);
-    saveWearableConfig(newConfig);
   }, []);
 
   const updatePreferences = useCallback((newPreferences: UserPreferences) => {
     setPreferences(newPreferences);
-    saveUserPreferences(newPreferences);
   }, []);
 
   // Action: Reset study data
   const resetStudy = useCallback(() => {
-    clearAllStudyData();
     const freshState = initializeStudyState(config);
+    trackPersistence(() => persistStudyState(freshState), () => {
+      clearStoredStudyState();
+      saveStoredStudyState(freshState);
+    });
     setState(freshState);
-  }, [config]);
+  }, [config, trackPersistence]);
 
   // Simulation helper for dev testing
   const simulateAddCompletedNight = useCallback(
@@ -1221,6 +1343,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         allPhaseProgresses: studyCalculations.phaseProgresses,
         wearableConfig,
         preferences,
+        persistenceStatus,
         isReady,
         submitMorningAssessment,
         updateNightRecord,

@@ -10,6 +10,7 @@ export function BottomNav() {
   const links = [
     { href: "/", label: "Today", icon: "●" },
     { href: "/study", label: "Study", icon: "◫" },
+    { href: "/data", label: "Data", icon: "⌁" },
     { href: "/settings", label: "Settings", icon: "⚙" },
   ];
 

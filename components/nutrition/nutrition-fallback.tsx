@@ -18,6 +18,7 @@ import {
   createOffsetTimestamp,
   timeStringToIso,
 } from "@/lib/engine/protocol-engine";
+import { createClientId } from "@/lib/client-id";
 
 interface NutritionFallbackProps {
   initialCompleteness?: FoodLogCompleteness;
@@ -88,7 +89,7 @@ export function NutritionFallback({
 
   const handleAddMissingEvent = () => {
     const newEvent: MissingEatingEvent = {
-      id: `missing_meal_${Date.now()}`,
+      id: createClientId("missing_meal"),
       timestamp: eventTime,
       time_is_approximate: true,
       meal_size: mealSize,

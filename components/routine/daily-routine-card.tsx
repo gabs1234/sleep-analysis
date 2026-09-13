@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useStudySession } from "@/context/study-context";
 import { formatDateKey } from "@/lib/engine/protocol-engine";
 import { DailyRoutineSession } from "@/types/study";
+import { createClientId } from "@/lib/client-id";
 
 function formatCountdown(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -45,7 +46,7 @@ export function DailyRoutineCard() {
   const startNext = () => {
     if (active || completed.length >= config.session_count) return;
     const session: DailyRoutineSession = {
-      id: `${config.id}_${Date.now()}`,
+      id: createClientId(config.id),
       activity_id: config.id,
       slot: completed.length + 1,
       target_minutes: config.minutes_per_session,
@@ -63,7 +64,7 @@ export function DailyRoutineCard() {
       routine_sessions: [
         ...sessions,
         {
-          id: `${config.id}_${Date.now()}`,
+          id: createClientId(config.id),
           activity_id: config.id,
           slot: completed.length + 1,
           target_minutes: config.minutes_per_session,

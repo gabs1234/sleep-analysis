@@ -150,6 +150,8 @@ export function generateStudyCSV(
     "wake_reason",
     "protocol_adherence",
     "adherence_note",
+    "evening_plan_adherence",
+    "evening_plan_adherence_note",
     "unusual_night",
     "unusual_reasons",
   ];
@@ -279,6 +281,8 @@ export function generateStudyCSV(
       escapeCsv(morning?.wake_reason ?? ""),
       escapeCsv(morning?.protocol_adherence ?? ""),
       escapeCsv(morning?.adherence_note ?? ""),
+      escapeCsv(morning?.evening_plan_adherence ?? ""),
+      escapeCsv(morning?.evening_plan_adherence_note ?? ""),
       escapeCsv(morning ? (morning.unusual_night ? "TRUE" : "FALSE") : ""),
       escapeCsv(morning?.unusual_reasons ? morning.unusual_reasons.join(";") : ""),
     ];

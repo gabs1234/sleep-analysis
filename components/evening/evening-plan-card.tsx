@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import { useStudySession } from "@/context/study-context";
 import { NightRecord, PlannedEveningEvent } from "@/types/study";
 import { formatLocalTime, timeStringToNightIso } from "@/lib/engine/protocol-engine";
+import { EventButtons } from "@/components/evening/event-buttons";
 
 const PLAN_ITEMS = [
   { id: "meal_end", label: "Last meal", offset: -180 },
@@ -42,17 +43,17 @@ export function EveningPlanCard({ date, record }: { date: string; record?: Night
 
   const [times, setTimes] = useState<Record<string, string>>(initialTimes);
   const [saved, setSaved] = useState(Boolean(record?.evening_plan_completed_at));
+  const displayedPlan: PlannedEveningEvent[] = PLAN_ITEMS.map((item) => ({
+    action_id: item.id,
+    action_label: item.label,
+    planned_timestamp: timeStringToNightIso(times[item.id], date),
+  }));
 
   if (!preferences.evening_plan_enabled) return null;
 
   const savePlan = () => {
-    const plan: PlannedEveningEvent[] = PLAN_ITEMS.map((item) => ({
-      action_id: item.id,
-      action_label: item.label,
-      planned_timestamp: timeStringToNightIso(times[item.id], date),
-    }));
     updateNightRecord(date, {
-      evening_plan: plan,
+      evening_plan: displayedPlan,
       evening_plan_completed_at: new Date().toISOString(),
     });
     setSaved(true);
@@ -69,25 +70,18 @@ export function EveningPlanCard({ date, record }: { date: string; record?: Night
         {saved && <span className="text-[11px] font-mono text-emerald-400">Saved ✓</span>}
       </div>
 
-      <div className="space-y-2">
-        {PLAN_ITEMS.map((item) => (
-          <label key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-900/60 border border-zinc-800 px-3 py-2.5">
-            <span className="text-xs text-zinc-200">{item.label}</span>
-            <input
-              type="time"
-              value={times[item.id]}
-              onChange={(event) => {
-                setTimes((current) => ({ ...current, [item.id]: event.target.value }));
-                setSaved(false);
-              }}
-              className="rounded-lg bg-black border border-zinc-700 px-2.5 py-1.5 text-sm font-mono text-zinc-100"
-            />
-          </label>
-        ))}
-      </div>
+      <EventButtons
+        date={date}
+        plannedEvents={displayedPlan}
+        onPlannedTimeChange={(actionId, time) => {
+          setTimes((current) => ({ ...current, [actionId]: time }));
+          setSaved(false);
+        }}
+        embedded
+      />
 
       <button type="button" onClick={savePlan} className="w-full py-3 rounded-xl bg-violet-200 text-violet-950 font-semibold text-sm active:scale-[0.98] transition-all">
-        {saved ? "Update tonight's plan" : "Save tonight's plan"}
+        {saved ? "Save intention changes" : "Save tonight's intentions"}
       </button>
     </section>
   );

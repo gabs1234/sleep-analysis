@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useStudySession } from "@/context/study-context";
 import { getActiveNightDateKey } from "@/lib/engine/time-context";
+import { PlannedEveningEvent } from "@/types/study";
 import {
   formatLocalTime,
   createOffsetTimestamp,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/engine/protocol-engine";
 
 const CORE_ACTIONS = [
+  { id: "meal_end", label: "Last meal", description: "Last caloric intake of the day" },
   { id: "work_end", label: "Finished work", description: "End of active work session" },
   { id: "screen_end", label: "Active screens done", description: "Last non-study phone/PC/TV interaction" },
   { id: "winddown_start", label: "Start wind-down", description: "Low-demand pre-sleep period" },
@@ -17,7 +19,14 @@ const CORE_ACTIONS = [
   { id: "lights_out", label: "Lights out", description: "Beginning attempt to fall asleep" },
 ];
 
-export function EventButtons() {
+interface EventButtonsProps {
+  date?: string;
+  plannedEvents?: PlannedEveningEvent[];
+  onPlannedTimeChange?: (actionId: string, time: string) => void;
+  embedded?: boolean;
+}
+
+export function EventButtons({ date, plannedEvents = [], onPlannedTimeChange, embedded = false }: EventButtonsProps) {
   const {
     tonightInstruction,
     logEveningAction,
@@ -27,7 +36,7 @@ export function EventButtons() {
     state,
   } = useStudySession();
 
-  const activeNightKey = getActiveNightDateKey();
+  const activeNightKey = date || getActiveNightDateKey();
   const activeRecord = state.records.find((r) => r.date === activeNightKey);
 
   const [activePickerId, setActivePickerId] = useState<string | null>(null);
@@ -39,7 +48,11 @@ export function EventButtons() {
   const allActionIds = new Set<string>();
   const mergedActions: Array<{ id: string; label: string; description?: string }> = [];
 
-  for (const act of [...CORE_ACTIONS, ...instructionActions]) {
+  const plannedActions = plannedEvents.map((item) => ({
+    id: item.action_id,
+    label: item.action_label,
+  }));
+  for (const act of [...CORE_ACTIONS, ...plannedActions, ...instructionActions]) {
     if (act.id === "work_end" && activeRecord?.daily_context?.did_work === false) continue;
     if (!allActionIds.has(act.id)) {
       allActionIds.add(act.id);
@@ -102,14 +115,15 @@ export function EventButtons() {
   };
 
   return (
-    <div className="w-full space-y-3 pt-4 border-t border-zinc-900">
+    <div className={`w-full space-y-3 ${embedded ? "pt-1" : "pt-4 border-t border-zinc-900"}`}>
       <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
-        <span>TIMESTAMPS &amp; EVENTS</span>
-        <span>ONE-TAP LOGGING</span>
+        <span>INTENTION VS REALITY</span>
+        <span>ACTUAL TIMES</span>
       </div>
 
       <div className="grid grid-cols-1 gap-2.5">
         {mergedActions.map((act) => {
+          const planned = plannedEvents.find((item) => item.action_id === act.id);
           const matchingLogs =
             activeRecord?.evening_actions.filter((a) => a.action_id === act.id) || [];
           const latestLog = matchingLogs[matchingLogs.length - 1];
@@ -128,6 +142,21 @@ export function EventButtons() {
                   {act.description && (
                     <div className="text-[11px] text-zinc-400">
                       {act.description}
+                    </div>
+                  )}
+                  {planned && onPlannedTimeChange ? (
+                    <label className="mt-1 flex items-center gap-1.5 text-[10px] font-mono text-violet-300">
+                      <span>Intended</span>
+                      <input
+                        type="time"
+                        value={formatLocalTime(planned.planned_timestamp)}
+                        onChange={(event) => onPlannedTimeChange(act.id, event.target.value)}
+                        className="rounded-md border border-violet-500/20 bg-black px-1.5 py-1 text-[11px] text-violet-100"
+                      />
+                    </label>
+                  ) : (
+                    <div className={`text-[10px] font-mono ${planned ? "text-violet-300" : "text-zinc-600"}`}>
+                      Intended {planned ? formatLocalTime(planned.planned_timestamp) : "—"}
                     </div>
                   )}
                 </div>

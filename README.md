@@ -28,7 +28,13 @@ Study protocols are JSON data. Add another built-in protocol in `config/`, regis
 
 `NightRecord.date` is the civil date on which the evening began. For example, a morning assessment completed on September 14 belongs to the September 13 night record. Times after midnight remain ISO timestamps on September 14 while staying attached to that record.
 
-All study and preference data is local to the current browser profile. Full study JSON and CSV exports are available from the Study page. Production collection never falls back to the simulator; synthetic data is created only through explicit developer simulation controls.
+All study and preference data is local to the current browser profile. Durable data lives in IndexedDB; existing `localStorage` installations are migrated automatically with a recovery snapshot retained. Changes are also written to a persistent record-level outbox so they can be retried idempotently when the future Pi hub is connected. Newer unsent revisions of the same record coalesce without losing deletion tombstones. OAuth credentials remain device-local and never enter that outbox.
+
+The app requests persistent browser storage when supported and falls back to `localStorage` if IndexedDB fails. Storage state and the number of mutations waiting for the hub are visible on Today and in Settings. Full study JSON and CSV exports remain available from the Study page. Production collection never falls back to the simulator; synthetic data is created only through explicit developer simulation controls.
+
+The future hub synchronization layer can consume the primitives exported by `lib/storage/indexed-db-storage.ts`: ordered outbox reads, exact-revision acknowledgements, and failure bookkeeping. No network endpoint is contacted by the current implementation.
+
+Browser storage is scoped to the exact web origin. When the Pi deployment is added, use one canonical HTTPS Tailscale hostname both at home and away; opening the app through a separate LAN hostname or IP would create a separate browser database.
 
 ## External health data
 

@@ -11,6 +11,13 @@ import { MockWearableProvider } from "@/lib/wearable/mock-wearable";
 import { formatDateKey, formatLocalTime } from "@/lib/engine/protocol-engine";
 import { importStudyJSON } from "@/lib/storage/data-export";
 
+function formatStorageSize(bytes?: number): string {
+  if (bytes === undefined) return "Unknown";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function SettingsPage() {
   const {
     config,
@@ -20,6 +27,7 @@ export default function SettingsPage() {
     updateWearableConfig,
     preferences,
     updatePreferences,
+    persistenceStatus,
     resetStudy,
     simulateAddCompletedNight,
   } = useStudySession();
@@ -319,6 +327,55 @@ export default function SettingsPage() {
           </div>
           <p className="text-[11px] text-zinc-500">Default: four 15-minute sessions. Only this generic label and completion times are stored.</p>
         </div>
+      </div>
+
+      <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Offline storage</h2>
+            <p className="text-xs text-zinc-400 mt-1">
+              Entries are saved on this device first. The queued mutations are ready for the future Pi hub connection.
+            </p>
+          </div>
+          <span className={`shrink-0 text-[10px] font-mono px-2 py-1 rounded border ${
+            persistenceStatus.phase === "error"
+              ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+              : persistenceStatus.phase === "saving"
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+          }`}>
+            {persistenceStatus.phase === "saving" ? "SAVING" : persistenceStatus.phase === "error" ? "FALLBACK" : "READY"}
+          </span>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-xl border border-zinc-900 bg-black/30 p-3">
+            <dt className="text-[10px] font-mono text-zinc-500">LOCAL DATABASE</dt>
+            <dd className="mt-1 text-zinc-200">{persistenceStatus.backend === "indexeddb" ? "IndexedDB" : "localStorage fallback"}</dd>
+          </div>
+          <div className="rounded-xl border border-zinc-900 bg-black/30 p-3">
+            <dt className="text-[10px] font-mono text-zinc-500">HUB OUTBOX</dt>
+            <dd className="mt-1 text-zinc-200">{persistenceStatus.pending_mutations} queued</dd>
+          </div>
+          <div className="rounded-xl border border-zinc-900 bg-black/30 p-3">
+            <dt className="text-[10px] font-mono text-zinc-500">STORAGE USED</dt>
+            <dd className="mt-1 text-zinc-200">{formatStorageSize(persistenceStatus.usage_bytes)}</dd>
+          </div>
+          <div className="rounded-xl border border-zinc-900 bg-black/30 p-3">
+            <dt className="text-[10px] font-mono text-zinc-500">EVICTION PROTECTION</dt>
+            <dd className="mt-1 text-zinc-200">{persistenceStatus.persistent_storage === true ? "Granted" : persistenceStatus.persistent_storage === false ? "Browser managed" : "Unknown"}</dd>
+          </div>
+        </dl>
+
+        {persistenceStatus.migrated_from_local_storage && (
+          <p className="text-[11px] text-emerald-300">Existing localStorage records were migrated and a recovery snapshot was retained.</p>
+        )}
+        {persistenceStatus.error && (
+          <p className="text-[11px] text-rose-300">IndexedDB issue: {persistenceStatus.error}. New changes are being mirrored to the fallback store.</p>
+        )}
+        <p className="text-[11px] text-zinc-500">
+          Nothing is transmitted yet. Once the hub is configured, acknowledged mutations can be removed safely from this outbox.
+        </p>
       </div>
 
       {/* 1. Wearable & Health Connect Data Sync */}

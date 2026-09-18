@@ -5,6 +5,16 @@ export type MorningQuestionType =
   | "protocol_adherence"
   | "unusual_night";
 
+export type EveningQuestionnaireModule =
+  | "day_context"
+  | "stress"
+  | "work"
+  | "social"
+  | "routine"
+  | "eating"
+  | "pre_sleep"
+  | "food_log";
+
 export interface EveningActionDefinition {
   id: string;
   label: string;
@@ -37,6 +47,7 @@ export interface PhaseConfig {
   conditions?: Record<string, ConditionConfig>;
   sequence?: string[]; // array of condition keys, e.g. ["dark", "normal", "normal", "dark"]
   morning_questions?: MorningQuestionType[];
+  evening_questionnaire_modules?: EveningQuestionnaireModule[];
   evening_actions?: EveningActionDefinition[];
   next_phase_prep_instruction?: string;
 }

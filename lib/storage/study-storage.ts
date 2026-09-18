@@ -19,7 +19,12 @@ export function isBrowser(): boolean {
 
 export function hasLegacyStoredData(): boolean {
   if (!isBrowser()) return false;
-  return Object.values(STORAGE_KEYS).some((key) => localStorage.getItem(key) !== null);
+  try {
+    return Object.values(STORAGE_KEYS).some((key) => localStorage.getItem(key) !== null);
+  } catch (error) {
+    console.warn("Could not inspect legacy local storage:", error);
+    return false;
+  }
 }
 
 export function loadStoredStudyConfig(): ExperimentConfig {
@@ -96,6 +101,7 @@ function hasDaySpecificData(record: StudyState["records"][number]): boolean {
     record.nutrition_fallback ||
     record.naps?.length ||
     record.caffeine_events?.length ||
+    record.life_log_events?.length ||
     record.routine_sessions?.length ||
     record.migration_archive?.simulated_wearable_data ||
     record.migration_archive?.simulated_food_records?.length
@@ -243,6 +249,9 @@ export function loadUserPreferences(): UserPreferences {
     return {
       ...DEFAULT_USER_PREFERENCES,
       ...parsed,
+      theme: parsed.theme === "light" || parsed.theme === "dark" || parsed.theme === "system"
+        ? parsed.theme
+        : DEFAULT_USER_PREFERENCES.theme,
       work_days: Array.isArray(parsed.work_days)
         ? parsed.work_days.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
         : DEFAULT_USER_PREFERENCES.work_days,

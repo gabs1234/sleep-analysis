@@ -6,6 +6,7 @@ import {
   initializeStudyState,
 } from "../lib/engine/protocol-engine";
 import { generateStudyCSV, generateStudyJSON } from "../lib/storage/data-export";
+import { buildFocusedStudyConfig, getEveningQuestionnaireModules } from "../lib/config/study-config";
 import { ExperimentConfig } from "../types/experiment";
 import { NightRecord } from "../types/study";
 
@@ -134,5 +135,26 @@ const json = generateStudyJSON(config, state);
 const parsedJson = JSON.parse(json);
 console.assert(parsedJson.summary.valid_nights_recorded === 21, "JSON summary valid count matches");
 console.assert(parsedJson.summary.excluded_nights === 1, "JSON summary excluded count matches");
+
+// 6. Focused strategy plans preserve the official seven-night block designs.
+const timingPlan = buildFocusedStudyConfig("sleep_window_timing");
+const opportunityPlan = buildFocusedStudyConfig("sleep_opportunity");
+if (timingPlan?.phases[1]?.sequence?.length !== 28) {
+  throw new Error("Sleep-window strategy should expand to 28 assigned nights");
+}
+if (opportunityPlan?.phases[1]?.sequence?.length !== 28) {
+  throw new Error("Sleep-opportunity strategy should expand to 28 assigned nights");
+}
+console.log("✓ Focused strategy plans preserve official block sequences");
+
+const darknessModules = getEveningQuestionnaireModules("darkness");
+const mealModules = getEveningQuestionnaireModules("meal_cutoff");
+if (darknessModules.includes("food_log") || !darknessModules.includes("pre_sleep")) {
+  throw new Error("Darkness study should use the shorter environment check-in");
+}
+if (!mealModules.includes("food_log") || !mealModules.includes("eating") || mealModules.includes("work")) {
+  throw new Error("Meal-cutoff study should use the meal-specific check-in");
+}
+console.log("✓ Evening questionnaires follow the active strategy profile");
 
 console.log("✓ ALL PROTOCOL ENGINE VERIFICATION TESTS PASSED!");

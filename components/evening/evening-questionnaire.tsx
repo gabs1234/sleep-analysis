@@ -6,6 +6,8 @@ import { DailySubjectiveContext, PreSleepState } from "@/types/study";
 import { DailyNutritionFallback, FoodLogCompleteness, GIExposureCategory } from "@/types/nutrition";
 import { GI_EXPOSURE_CATEGORIES } from "@/lib/nutrition/nutrition-service";
 import { getActiveNightDateKey } from "@/lib/engine/time-context";
+import { EveningQuestionnaireModule } from "@/types/experiment";
+import { getEveningQuestionnaireModules } from "@/lib/config/study-config";
 
 interface EveningQuestionnaireProps {
   initialContext?: DailySubjectiveContext;
@@ -30,14 +32,15 @@ const RATING_ROWS: Array<{
   key: keyof DailySubjectiveContext;
   label: string;
   options: string[];
+  module: EveningQuestionnaireModule;
   onlyWhenWorked?: boolean;
 }> = [
-  { key: "overall_stress", label: "Overall stress", options: ["Relaxed", "Mild", "Stressed", "Very"] },
-  { key: "work_stress", label: "Work stress", options: ["Calm", "Mild", "Stressed", "Overwhelming"], onlyWhenWorked: true },
-  { key: "work_satisfaction", label: "Work felt", options: ["Bad", "Frustrating", "Fine", "Satisfying"], onlyWhenWorked: true },
-  { key: "meaningful_social_contact", label: "Meaningful contact", options: ["None", "Brief", "Some", "Substantial"] },
-  { key: "routine_adherence", label: "Normal routine", options: ["Fell apart", "Partial", "Mostly", "Complete"] },
-  { key: "eating_out_of_control", label: "Eating control", options: ["Normal", "Somewhat off", "Out of control"] },
+  { key: "overall_stress", label: "Overall stress", options: ["Relaxed", "Mild", "Stressed", "Very"], module: "stress" },
+  { key: "work_stress", label: "Work stress", options: ["Calm", "Mild", "Stressed", "Overwhelming"], module: "work", onlyWhenWorked: true },
+  { key: "work_satisfaction", label: "Work felt", options: ["Bad", "Frustrating", "Fine", "Satisfying"], module: "work", onlyWhenWorked: true },
+  { key: "meaningful_social_contact", label: "Meaningful contact", options: ["None", "Brief", "Some", "Substantial"], module: "social" },
+  { key: "routine_adherence", label: "Normal routine", options: ["Fell apart", "Partial", "Mostly", "Complete"], module: "routine" },
+  { key: "eating_out_of_control", label: "Eating control", options: ["Normal", "Somewhat off", "Out of control"], module: "eating" },
 ];
 
 const MENTAL_OPTIONS = ["Quiet", "Active", "Racing", "Can't switch off"];
@@ -53,6 +56,8 @@ export function EveningQuestionnaire({
   onClose,
 }: EveningQuestionnaireProps) {
   const {
+    activePhase,
+    tonightInstruction,
     preferences,
     saveDailyContext,
     savePreSleepState,
@@ -63,6 +68,8 @@ export function EveningQuestionnaire({
   const weekday = new Date(`${nightDate}T12:00:00`).getDay();
   const scheduledWorkday = preferences.work_days.includes(weekday);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const modules = activePhase.evening_questionnaire_modules || getEveningQuestionnaireModules(activePhase.id);
+  const includes = (module: EveningQuestionnaireModule) => modules.includes(module);
 
   const [context, setContext] = useState<DailySubjectiveContext>(() => ({
     scheduled_workday: initialContext?.scheduled_workday ?? scheduledWorkday,
@@ -78,8 +85,8 @@ export function EveningQuestionnaire({
   const [error, setError] = useState<string | null>(null);
 
   const visibleRatings = useMemo(
-    () => RATING_ROWS.filter((row) => !row.onlyWhenWorked || context.did_work),
-    [context.did_work]
+    () => RATING_ROWS.filter((row) => modules.includes(row.module) && (!row.onlyWhenWorked || context.did_work)),
+    [context.did_work, modules]
   );
 
   const setContextValue = (key: keyof DailySubjectiveContext, value: DailySubjectiveContext[keyof DailySubjectiveContext]) => {
@@ -92,29 +99,31 @@ export function EveningQuestionnaire({
   };
 
   const save = () => {
-    const requiredContextComplete =
-      context.did_work !== undefined &&
-      context.overall_stress !== undefined &&
-      context.meaningful_social_contact !== undefined &&
-      context.routine_adherence !== undefined &&
-      context.eating_out_of_control !== undefined &&
-      (!context.did_work || (context.work_stress !== undefined && context.work_satisfaction !== undefined));
-    const preSleepComplete = preSleep.mental_arousal !== undefined && preSleep.sleepiness !== undefined;
-    if (!requiredContextComplete || !preSleepComplete || !completeness) {
+    const requiredContextComplete = visibleRatings.every((row) => context[row.key] !== undefined);
+    const workContextComplete = !includes("work") || context.did_work !== undefined;
+    const preSleepComplete = !includes("pre_sleep") || (preSleep.mental_arousal !== undefined && preSleep.sleepiness !== undefined);
+    const foodLogComplete = !includes("food_log") || completeness !== undefined;
+    if (!requiredContextComplete || !workContextComplete || !preSleepComplete || !foodLogComplete) {
       setError("Complete the unanswered items before saving. Your selections will stay on this screen.");
       return;
     }
 
     const now = new Date().toISOString();
-    saveDailyContext({
-      ...context,
-      work_stress: context.did_work ? context.work_stress : undefined,
-      work_satisfaction: context.did_work ? context.work_satisfaction : -1,
-      completed_at: now,
-    });
-    savePreSleepState({ ...preSleep, capture_source: "live", completed_at: now });
-    saveFoodLogCompleteness(completeness);
-    if (completeness !== "yes") {
+    if (modules.some((module) => ["day_context", "stress", "work", "social", "routine", "eating"].includes(module))) {
+      saveDailyContext({
+        ...context,
+        work_stress: includes("work") && context.did_work ? context.work_stress : undefined,
+        work_satisfaction: includes("work") ? context.did_work ? context.work_satisfaction : -1 : undefined,
+        completed_at: now,
+      });
+    }
+    if (includes("pre_sleep")) {
+      savePreSleepState({ ...preSleep, capture_source: "live", completed_at: now });
+    }
+    if (includes("food_log") && completeness) {
+      saveFoodLogCompleteness(completeness);
+    }
+    if (includes("food_log") && completeness && completeness !== "yes") {
       saveDailyNutritionFallback({
         ...initialFallback,
         completed_at: now,
@@ -127,16 +136,21 @@ export function EveningQuestionnaire({
   };
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-6 space-y-5 animate-fade-in pb-24">
+    <div className="legacy-page mx-auto w-full max-w-xl animate-fade-in space-y-5 px-5 pb-28 pt-6">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-xs font-mono text-emerald-400 uppercase tracking-wider">Evening check-in</div>
-          <h1 className="text-2xl font-semibold text-zinc-100 mt-1">A quick picture of today</h1>
+          <div className="text-xs font-mono text-emerald-400 uppercase tracking-wider">{activePhase.name}</div>
+          <h1 className="text-2xl font-semibold text-zinc-100 mt-1">Tonight&apos;s study check-in</h1>
         </div>
         {onClose && <button type="button" onClick={onClose} className="p-2 text-zinc-500 hover:text-zinc-200" aria-label="Close">✕</button>}
       </div>
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
+      <div className="rounded-xl bg-[#eee9ff] px-3.5 py-3 text-xs text-[#57469f]">
+        <span className="font-semibold">Tonight&apos;s focus:</span>
+        <span className="ml-1.5 text-[#7a65d5]">{tonightInstruction.primaryInstruction}</span>
+      </div>
+
+      {includes("day_context") && <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
         <div>
           <h2 className="text-sm font-semibold text-zinc-100">What kind of day was it?</h2>
           <p className="text-xs text-zinc-400 mt-1">Travel is ordinary context and does not invalidate the night.</p>
@@ -144,7 +158,7 @@ export function EveningQuestionnaire({
         <div className="grid grid-cols-3 gap-1.5">
           {DAY_TYPES.map((item) => <Choice key={item.value} selected={context.day_type === item.value} onClick={() => setContextValue("day_type", item.value)}>{item.label}</Choice>)}
         </div>
-        <div className="rounded-xl bg-zinc-900/50 border border-zinc-800 p-3 space-y-2">
+        {includes("work") && <div className="rounded-xl bg-zinc-900/50 border border-zinc-800 p-3 space-y-2">
           <div className="text-xs text-zinc-200">
             {scheduledWorkday ? "This is normally a workday. Did you work?" : "This is normally a day off. Did you work anyway?"}
           </div>
@@ -152,10 +166,10 @@ export function EveningQuestionnaire({
             <Choice selected={context.did_work === true} onClick={() => setContextValue("did_work", true)}>Yes, worked</Choice>
             <Choice selected={context.did_work === false} onClick={() => setContextValue("did_work", false)}>No work</Choice>
           </div>
-        </div>
-      </section>
+        </div>}
+      </section>}
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
+      {visibleRatings.length > 0 && <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
         <h2 className="text-sm font-semibold text-zinc-100">Day in a few taps</h2>
         {visibleRatings.map((row) => {
           const value = context[row.key] as number | undefined;
@@ -168,18 +182,18 @@ export function EveningQuestionnaire({
             </div>
           );
         })}
-      </section>
+      </section>}
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
+      {includes("pre_sleep") && <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
         <div>
           <h2 className="text-sm font-semibold text-zinc-100">Pre-sleep state</h2>
           <p className="text-xs text-zinc-400 mt-1">If you are not near sleep yet, close this and answer later—or reconstruct it tomorrow.</p>
         </div>
         <Rating label="Mind" options={MENTAL_OPTIONS} value={preSleep.mental_arousal} onChange={(value) => setPreSleep((current) => ({ ...current, mental_arousal: value }))} />
         <Rating label="Sleepiness" options={SLEEPINESS_OPTIONS} value={preSleep.sleepiness} onChange={(value) => setPreSleep((current) => ({ ...current, sleepiness: value }))} />
-      </section>
+      </section>}
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
+      {includes("food_log") && <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
         <div className="flex justify-between gap-3">
           <h2 className="text-sm font-semibold text-zinc-100">Food log completeness</h2>
           {importedFoodCount > 0 && <span className="text-[10px] font-mono text-emerald-400">{importedFoodCount} imported</span>}
@@ -197,7 +211,7 @@ export function EveningQuestionnaire({
             </div>
           </div>
         )}
-      </section>
+      </section>}
 
       {error && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{error}</div>}
       <button type="button" onClick={save} className="w-full py-3.5 rounded-xl bg-zinc-100 text-black font-semibold text-sm active:scale-[0.98] transition-all">Save evening check-in</button>

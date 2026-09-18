@@ -1,4 +1,4 @@
-import { ExperimentConfig, PhaseConfig, ConditionConfig, EveningActionDefinition } from "@/types/experiment";
+import { ExperimentConfig, PhaseConfig, ConditionConfig, EveningActionDefinition, EveningQuestionnaireModule } from "@/types/experiment";
 import officialStudyV1Json from "../../sleep_study_protocol_v1.json";
 import defaultStudyJson from "../../config/default-study.json";
 import screenCutoffStudyJson from "../../config/screen-cutoff-study.json";
@@ -16,6 +16,7 @@ interface RawManualEvent {
 }
 
 interface RawCondition {
+  user_label?: string;
   instruction?: string;
   instruction_template?: string;
   secondary_instruction?: string;
@@ -23,6 +24,7 @@ interface RawCondition {
 }
 
 interface RawPhase {
+  enabled?: boolean;
   type?: string;
   valid_nights_required?: number;
   title_for_user?: string;
@@ -31,7 +33,14 @@ interface RawPhase {
   description?: string;
   conditions?: Record<string, RawCondition>;
   sequence?: string[];
+  block_sequence?: string[];
+  block_length_nights?: number;
   on_complete?: string;
+  phase_setup?: {
+    prompt?: string;
+    constraints?: string[];
+  };
+  hold_constant?: string[];
 }
 
 interface RawProtocolV1 {
@@ -40,6 +49,33 @@ interface RawProtocolV1 {
   phase_order?: string[];
   phases?: Record<string, RawPhase>;
   manual_events?: Record<string, RawManualEvent>;
+}
+
+const FULL_EVENING_QUESTIONNAIRE: EveningQuestionnaireModule[] = [
+  "day_context",
+  "stress",
+  "work",
+  "social",
+  "routine",
+  "eating",
+  "pre_sleep",
+  "food_log",
+];
+
+const PHASE_EVENING_QUESTIONNAIRES: Record<string, EveningQuestionnaireModule[]> = {
+  baseline: FULL_EVENING_QUESTIONNAIRE,
+  darkness: ["day_context", "stress", "work", "pre_sleep"],
+  noise: ["day_context", "stress", "work", "pre_sleep"],
+  screen_cutoff: ["day_context", "stress", "work", "routine", "pre_sleep"],
+  structured_winddown: ["day_context", "stress", "work", "routine", "pre_sleep"],
+  meal_cutoff: ["day_context", "stress", "eating", "pre_sleep", "food_log"],
+  sleep_window_timing: ["day_context", "stress", "work", "routine", "pre_sleep"],
+  sleep_opportunity: ["day_context", "stress", "work", "routine", "pre_sleep"],
+  final_protocol_validation: ["day_context", "stress", "work", "routine", "pre_sleep"],
+};
+
+export function getEveningQuestionnaireModules(phaseId: string): EveningQuestionnaireModule[] {
+  return PHASE_EVENING_QUESTIONNAIRES[phaseId] || FULL_EVENING_QUESTIONNAIRE;
 }
 
 /**
@@ -95,7 +131,17 @@ export function normalizeProtocolV1(raw: RawProtocolV1): ExperimentConfig {
       description: rawPhase.run_only_if || rawPhase.description,
       default_instruction: rawPhase.tonight_instruction || "Follow your normal routine.",
       conditions,
-      sequence: rawPhase.sequence,
+      sequence: rawPhase.sequence || rawPhase.block_sequence?.flatMap((conditionKey) =>
+        Array.from({ length: rawPhase.block_length_nights || 1 }, () => conditionKey)
+      ),
+      morning_questions: [
+        "readiness",
+        "sleep_quality",
+        "wake_reason",
+        ...(phaseType === "baseline" ? [] : ["protocol_adherence" as const]),
+        "unusual_night",
+      ],
+      evening_questionnaire_modules: getEveningQuestionnaireModules(phaseId),
       evening_actions: defaultEveningActions,
       next_phase_prep_instruction: rawPhase.on_complete === "pause_until_next_phase_is_enabled"
         ? "Baseline phase complete. Tomorrow begins the next part of the study."
@@ -122,6 +168,73 @@ export const AVAILABLE_STUDIES: ExperimentConfig[] = [
   LEGACY_DARKNESS_STUDY_CONFIG,
   SCREEN_CUTOFF_STUDY_CONFIG,
 ];
+
+export interface ProtocolStrategy {
+  id: string;
+  name: string;
+  type: string;
+  validNights: number;
+  rationale?: string;
+  defaultInstruction?: string;
+  setupPrompt?: string;
+  setupConstraints: string[];
+  holdConstant: string[];
+  conditions: Array<{
+    id: string;
+    label?: string;
+    instruction: string;
+  }>;
+}
+
+const rawOfficialProtocol = officialStudyV1Json as RawProtocolV1;
+
+/** Focused protocol options exposed by the official study JSON, in its declared order. */
+export const OFFICIAL_PROTOCOL_STRATEGIES: ProtocolStrategy[] = (
+  rawOfficialProtocol.phase_order || []
+).flatMap((phaseId) => {
+  const rawPhase = rawOfficialProtocol.phases?.[phaseId];
+  const normalizedPhase = OFFICIAL_STUDY_V1_CONFIG.phases.find((phase) => phase.id === phaseId);
+  if (!rawPhase || !normalizedPhase) return [];
+
+  return [{
+    id: phaseId,
+    name: normalizedPhase.name,
+    type: rawPhase.type || normalizedPhase.type,
+    validNights: normalizedPhase.valid_nights_required,
+    rationale: rawPhase.run_only_if || rawPhase.description,
+    defaultInstruction: rawPhase.tonight_instruction,
+    setupPrompt: rawPhase.phase_setup?.prompt,
+    setupConstraints: rawPhase.phase_setup?.constraints || [],
+    holdConstant: rawPhase.hold_constant || [],
+    conditions: Object.entries(rawPhase.conditions || {}).map(([id, condition]) => ({
+      id,
+      label: condition.user_label,
+      instruction: condition.instruction || condition.instruction_template || "Follow tonight's condition.",
+    })),
+  }];
+});
+
+export function getFocusedStudyId(strategyId: string): string {
+  return `${OFFICIAL_STUDY_V1_CONFIG.study_id}-strategy-${strategyId}`;
+}
+
+/** Builds a practical study plan: baseline first, followed by one chosen intervention. */
+export function buildFocusedStudyConfig(strategyId: string): ExperimentConfig | undefined {
+  const chosenPhase = OFFICIAL_STUDY_V1_CONFIG.phases.find((phase) => phase.id === strategyId);
+  const baseline = OFFICIAL_STUDY_V1_CONFIG.phases.find((phase) => phase.id === "baseline");
+  if (!chosenPhase || !baseline) return undefined;
+
+  const phases = strategyId === "baseline" ? [chosenPhase] : [baseline, chosenPhase];
+  return {
+    ...OFFICIAL_STUDY_V1_CONFIG,
+    study_id: getFocusedStudyId(strategyId),
+    study_name: strategyId === "baseline" ? "Baseline Sleep Study" : `${chosenPhase.name} Study`,
+    description: strategyId === "baseline"
+      ? "Establish your normal sleep pattern before choosing a change to test."
+      : `Establish a baseline, then test ${chosenPhase.name.toLowerCase()} while keeping the rest of your routine as stable as practical.`,
+    phases,
+  };
+}
 
 export function getStudyConfigById(studyId: string): ExperimentConfig {
   const found = AVAILABLE_STUDIES.find((s) => s.study_id === studyId);

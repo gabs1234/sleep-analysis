@@ -120,6 +120,19 @@ const StudyContext = createContext<StudyContextType | undefined>(undefined);
 
 const emptySubscribe = () => () => {};
 
+function rejectAfter<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(
+      () => reject(new Error("Browser storage initialization timed out")),
+      milliseconds
+    );
+  });
+  return Promise.race([promise, deadline]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
+
 export function StudyProvider({ children }: { children: ReactNode }) {
   const clientReady = useSyncExternalStore(
     emptySubscribe,
@@ -170,7 +183,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     if (!clientReady) return;
     let cancelled = false;
 
-    initializeBrowserStorage(initialSnapshot.current, hasLegacyStoredData())
+    rejectAfter(
+      Promise.resolve().then(() =>
+        initializeBrowserStorage(initialSnapshot.current, hasLegacyStoredData())
+      ),
+      4_000
+    )
       .then(({ snapshot, status }) => {
         if (cancelled) return;
         const hydratedState = migrateStoredStudyState(snapshot.state, snapshot.config);
@@ -1234,13 +1252,45 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       setConfig(newConfig);
 
       setState((prev) => {
-        const recordsToKeep = preserveRecords ? prev.records : [];
+        let recordsToKeep = preserveRecords
+          ? prev.records.map((record) => {
+              const phaseIndex = newConfig.phases.findIndex((phase) => phase.id === record.phase_id);
+              return phaseIndex >= 0 ? { ...record, phase_index: phaseIndex } : record;
+            })
+          : [];
+
+        // A new focused protocol may begin on a day that already contains
+        // general timeline entries. Keep those entries, but attach today's
+        // record to the new active phase so protocol actions remain valid.
+        if (preserveRecords && prev.study_id !== newConfig.study_id && newConfig.phases.length > 0) {
+          const activeNightDate = getActiveNightDateKey();
+          const activePhaseIndex = calculateStudyState(newConfig, recordsToKeep).activePhaseIndex;
+          const nextPhase = newConfig.phases[activePhaseIndex];
+          const phaseNightCount = recordsToKeep.filter((record) => record.phase_id === nextPhase.id).length;
+          recordsToKeep = recordsToKeep.map((record) => {
+            const phaseStillExists = newConfig.phases.some((phase) => phase.id === record.phase_id);
+            if (record.date !== activeNightDate || phaseStillExists) return record;
+            return {
+              ...record,
+              phase_id: nextPhase.id,
+              phase_index: activePhaseIndex,
+              night_number_in_phase: phaseNightCount + 1,
+              valid_night_number_in_phase: undefined,
+              condition_key: undefined,
+              prescribed_instruction: nextPhase.default_instruction || "Follow your normal routine.",
+              secondary_instruction: undefined,
+              evening_acknowledged_at: undefined,
+              is_valid: false,
+            };
+          });
+        }
+
         const newState: StudyState = {
           data_schema_version: 2,
           study_id: newConfig.study_id,
-          status: prev.status || "active",
+          status: prev.study_id === newConfig.study_id ? prev.status : "active",
           started_at: prev.started_at || new Date().toISOString(),
-          current_phase_index: prev.current_phase_index ?? 0,
+          current_phase_index: calculateStudyState(newConfig, recordsToKeep).activePhaseIndex,
           records: recordsToKeep,
           current_night_id: prev.current_night_id || formatDateKey(),
           last_active_at: new Date().toISOString(),

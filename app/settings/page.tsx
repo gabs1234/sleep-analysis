@@ -287,13 +287,13 @@ export default function SettingsPage() {
   const currentRedirectUri = typeof window !== "undefined" ? window.location.origin + "/settings" : "";
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-8 space-y-8 animate-fade-in pb-20">
+    <div className="legacy-page mx-auto w-full max-w-xl animate-fade-in space-y-8 px-5 pb-28 pt-7">
       {/* Header */}
       <div className="space-y-1">
-        <div className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
+        <div className="app-eyebrow">
           CONFIGURATION
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
+        <h1 className="text-[1.8rem] font-semibold tracking-[-0.04em] text-[#20201e]">
           Settings
         </h1>
       </div>
@@ -309,6 +309,31 @@ export default function SettingsPage() {
         <div>
           <h2 className="text-sm font-semibold text-zinc-100">Personal defaults</h2>
           <p className="text-xs text-zinc-400 mt-1">Customize the daily flow without editing source code or revealing what a private routine represents.</p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-xs font-mono text-zinc-400">COLOR SCHEME</label>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { value: "light", label: "Day" },
+              { value: "dark", label: "Night" },
+              { value: "system", label: "System" },
+            ] as const).map((option) => {
+              const selected = preferences.theme === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => updatePreferences({ ...preferences, theme: option.value })}
+                  className={`rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${selected ? "bg-[#6d55e7] text-white" : "bg-zinc-900 text-zinc-400"}`}
+                  aria-pressed={selected}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-zinc-500">System follows your device appearance automatically.</p>
         </div>
 
         <div className="space-y-2">

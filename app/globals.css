@@ -1,8 +1,79 @@
 @import "tailwindcss";
 
 :root {
-  --background: #000000;
-  --foreground: #ededed;
+  --background: #f5f3ee;
+  --foreground: #252421;
+  --app-accent: #6d55e7;
+  --app-muted: #aaa69e;
+  --app-text-secondary: #77736b;
+  --nav-bg: rgb(251 250 247 / 0.95);
+  --nav-bg-solid: #fbfaf7;
+  --nav-border: rgb(0 0 0 / 0.06);
+  --nav-active-bg: #eee9ff;
+  --log-bg: #f5f3ee;
+  --log-header: #fbfaf7;
+  --log-surface: #ffffff;
+  --log-surface-muted: #efede7;
+  --log-text: #252421;
+  --log-muted: #77736b;
+  --log-faint: #aaa69e;
+  --log-line: rgb(35 33 29 / 0.1);
+  --log-accent: #6d55e7;
+  --log-shadow: 0 7px 22px rgb(38 35 28 / 0.05);
+  --log-primary-button: #292824;
+  --log-primary-button-text: #ffffff;
+  --log-purple-bg: #eee9ff;
+  --log-purple-fg: #6848d9;
+  --log-pink-bg: #fbe7ed;
+  --log-pink-fg: #b84364;
+  --log-blue-bg: #e5f0f7;
+  --log-blue-fg: #3475b9;
+  --log-indigo-bg: #e7e9fb;
+  --log-indigo-fg: #5962bd;
+  --log-orange-bg: #f6e8dc;
+  --log-orange-fg: #9b6238;
+  --log-green-bg: #e2f1ea;
+  --log-green-fg: #2b8053;
+  --log-yellow-bg: #fff1ca;
+  --log-yellow-fg: #a86d00;
+}
+
+html[data-theme="dark"] {
+  --background: #11110f;
+  --foreground: #f3f3f1;
+  --app-accent: #a995ff;
+  --app-muted: #858582;
+  --app-text-secondary: #bababa;
+  --nav-bg: rgb(29 29 29 / 0.95);
+  --nav-bg-solid: #1d1d1d;
+  --nav-border: rgb(255 255 255 / 0.07);
+  --nav-active-bg: #373737;
+  --log-bg: #11110f;
+  --log-header: #1d1d1d;
+  --log-surface: #212120;
+  --log-surface-muted: #30302f;
+  --log-text: #f3f3f1;
+  --log-muted: #aaa9a5;
+  --log-faint: #757574;
+  --log-line: #333332;
+  --log-accent: #7c9cff;
+  --log-shadow: none;
+  --log-primary-button: #f2f2ef;
+  --log-primary-button-text: #161616;
+  --log-purple-bg: #332b4e;
+  --log-purple-fg: #b9a6ff;
+  --log-pink-bg: #482832;
+  --log-pink-fg: #ff91ae;
+  --log-blue-bg: #20384b;
+  --log-blue-fg: #79bfff;
+  --log-indigo-bg: #292d50;
+  --log-indigo-fg: #9ea6ff;
+  --log-orange-bg: #463322;
+  --log-orange-fg: #e9a96d;
+  --log-green-bg: #203e30;
+  --log-green-fg: #70d19d;
+  --log-yellow-bg: #493d1f;
+  --log-yellow-fg: #ffd369;
 }
 
 @theme inline {
@@ -13,12 +84,167 @@
 }
 
 body {
-  background: #000000;
-  color: #ededed;
+  background: var(--background);
+  color: var(--foreground);
   font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+}
+
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class~="bg-white"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="bg-[#fffff8]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="bg-[#fbfaf7]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="bg-[#efede7]"] {
+  background-color: #20201f !important;
+}
+
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#20201e]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#292824]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#302e2a]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#34322f]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#4c4943]"] {
+  color: #f0f0ed !important;
+}
+
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#77736b]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#8d8981]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#8e8a82]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#918d85]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#97938b]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#99958d]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#9a968e]"],
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="text-[#aaa69e]"] {
+  color: #aaa9a5 !important;
+}
+
+html[data-theme="dark"] :is(.app-page, .legacy-page) [class*="border-black"] {
+  border-color: rgb(255 255 255 / 0.08) !important;
+}
+
+html[data-theme="dark"] .app-input {
+  border-color: rgb(255 255 255 / 0.08);
+  background: #30302f;
+  color: #f3f3f1;
+}
+
+html[data-theme="dark"] .app-page svg[role="img"] text {
+  fill: #aaa9a5;
+}
+
+html[data-theme="dark"] .app-page svg[role="img"] polyline {
+  stroke: #aaa9a5;
+}
+
+button,
+a,
+input,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+.app-page {
+  min-height: calc(100vh - 5rem);
+}
+
+.app-eyebrow {
+  color: #9a968e;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.app-input {
+  width: 100%;
+  border: 1px solid rgba(35, 33, 29, 0.08);
+  border-radius: 0.875rem;
+  background: #efede7;
+  padding: 0.75rem 0.875rem;
+  color: #292824;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.app-input:focus {
+  border-color: rgba(109, 85, 231, 0.45);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(109, 85, 231, 0.1);
+}
+
+.app-input::placeholder {
+  color: #aaa69e;
+}
+
+/* The dense protocol and settings tools keep their existing structure while
+   inheriting the warmer visual system used by the primary app surfaces. */
+.legacy-page [class*="bg-zinc-950"] {
+  background-color: #fff;
+}
+
+.legacy-page [class*="bg-zinc-900"] {
+  background-color: #efede7;
+}
+
+.legacy-page [class*="bg-black"] {
+  background-color: #e9e6df;
+}
+
+.legacy-page [class*="border-zinc-9"],
+.legacy-page [class*="border-zinc-8"],
+.legacy-page [class*="border-zinc-7"] {
+  border-color: rgba(35, 33, 29, 0.09);
+}
+
+.legacy-page [class*="text-zinc-100"],
+.legacy-page [class*="text-zinc-200"],
+.legacy-page [class*="text-zinc-300"] {
+  color: #302e2a;
+}
+
+.legacy-page [class*="text-zinc-400"],
+.legacy-page [class*="text-zinc-500"],
+.legacy-page [class*="text-zinc-600"] {
+  color: #817d75;
+}
+
+html[data-theme="dark"] .legacy-page [class*="bg-zinc-950"] {
+  background-color: #20201f;
+}
+
+html[data-theme="dark"] .legacy-page [class*="bg-zinc-900"] {
+  background-color: #30302f;
+}
+
+html[data-theme="dark"] .legacy-page [class*="bg-black"] {
+  background-color: #181817;
+}
+
+html[data-theme="dark"] .legacy-page [class*="border-zinc"] {
+  border-color: rgb(255 255 255 / 0.08);
+}
+
+html[data-theme="dark"] .legacy-page [class*="text-zinc-100"],
+html[data-theme="dark"] .legacy-page [class*="text-zinc-200"],
+html[data-theme="dark"] .legacy-page [class*="text-zinc-300"] {
+  color: #f0f0ed;
+}
+
+html[data-theme="dark"] .legacy-page [class*="text-zinc-400"],
+html[data-theme="dark"] .legacy-page [class*="text-zinc-500"],
+html[data-theme="dark"] .legacy-page [class*="text-zinc-600"] {
+  color: #aaa9a5;
+}
+
+.legacy-page button.bg-zinc-100 {
+  background-color: #292824;
+  color: #fff;
 }
 
 @keyframes fadeIn {
@@ -34,6 +260,21 @@ body {
 
 .animate-fade-in {
   animation: fadeIn 0.18s ease-out forwards;
+}
+
+@keyframes sheetUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-sheet-up {
+  animation: sheetUp 0.2s ease-out both;
 }
 
 /* Safe area padding for mobile notch and bottom navigation */

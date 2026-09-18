@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useStudySession } from "@/context/study-context";
 import { WakeReason, ProtocolAdherence, UnusualNightReason, MorningAssessment } from "@/types/study";
+import { getEveningQuestionnaireModules } from "@/lib/config/study-config";
 
 interface MorningCheckinProps {
   initialData?: MorningAssessment;
@@ -62,14 +63,21 @@ export function MorningCheckin({ initialData, hasEveningPlan = false, onComplete
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDone, setIsDone] = useState(false);
 
-  const hasIntervention = activePhase.type === "randomized_experiment";
+  const configuredQuestions = activePhase.morning_questions;
+  const hasIntervention = configuredQuestions
+    ? configuredQuestions.includes("protocol_adherence")
+    : activePhase.type === "randomized_experiment";
+  const asksWakeReason = configuredQuestions?.includes("wake_reason") ?? true;
+  const asksUnusualContext = configuredQuestions?.includes("unusual_night") ?? true;
+  const eveningModules = activePhase.evening_questionnaire_modules || getEveningQuestionnaireModules(activePhase.id);
+  const asksPlanAdherence = hasEveningPlan && eveningModules.includes("routine");
   const steps: MorningStep[] = [
     "readiness",
     "quality",
-    "wake",
+    ...(asksWakeReason ? (["wake"] as MorningStep[]) : []),
     ...(hasIntervention ? (["protocol"] as MorningStep[]) : []),
-    ...(hasEveningPlan ? (["plan"] as MorningStep[]) : []),
-    "context",
+    ...(asksPlanAdherence ? (["plan"] as MorningStep[]) : []),
+    ...(asksUnusualContext ? (["context"] as MorningStep[]) : []),
   ];
   const step = steps[stepIndex];
   const totalSteps = steps.length;
@@ -137,13 +145,13 @@ export function MorningCheckin({ initialData, hasEveningPlan = false, onComplete
     unusualFlag: boolean,
     tags: UnusualNightReason[]
   ) => {
-    if (readiness === null || sleepQuality === null || wakeReason === null) return;
+    if (readiness === null || sleepQuality === null || (asksWakeReason && wakeReason === null)) return;
     setIsSubmitting(true);
     try {
       await submitMorningAssessment({
         readiness,
         sleep_quality: sleepQuality,
-        wake_reason: wakeReason,
+        wake_reason: wakeReason || "unsure",
         protocol_adherence: adherence || undefined,
         adherence_note: adherenceNote.trim() || undefined,
         evening_plan_adherence: planAdherence || undefined,
@@ -162,7 +170,7 @@ export function MorningCheckin({ initialData, hasEveningPlan = false, onComplete
 
   if (isDone) {
     return (
-      <div className="w-full max-w-md mx-auto px-4 py-12 flex flex-col items-center justify-center text-center space-y-6 animate-fade-in">
+      <div className="legacy-page mx-auto flex w-full max-w-xl animate-fade-in flex-col items-center justify-center space-y-6 px-5 py-12 text-center">
         <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-3xl font-bold border border-emerald-500/20">
           ✓
         </div>
@@ -189,8 +197,12 @@ export function MorningCheckin({ initialData, hasEveningPlan = false, onComplete
   }
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-6 space-y-5 animate-fade-in">
+    <div className="legacy-page mx-auto w-full max-w-xl animate-fade-in space-y-5 px-5 pb-28 pt-6">
       {/* Top Navigation Bar */}
+      <div className="rounded-xl bg-[#eee9ff] px-3.5 py-3 text-xs text-[#57469f]">
+        <span className="font-semibold">{activePhase.name}</span>
+        <span className="ml-1.5 text-[#7a65d5]">Questions selected by your active study.</span>
+      </div>
       <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
         <div className="flex items-center space-x-2">
           {stepIndex > 0 ? (

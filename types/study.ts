@@ -117,6 +117,20 @@ export interface CaffeineEventLog {
   source?: string;
 }
 
+export type LifeLogEventKind = "thought" | "feeling" | "event" | "sleep";
+
+/** A lightweight, user-authored timeline entry outside the structured protocol fields. */
+export interface LifeLogEvent {
+  id: string;
+  kind: LifeLogEventKind;
+  timestamp: string;
+  title: string;
+  note?: string;
+  rating?: number;
+  started_at?: string;
+  ended_at?: string;
+}
+
 export interface DerivedBehavioralIntervals {
   work_to_lights_out_minutes?: number;
   screen_to_lights_out_minutes?: number;
@@ -158,6 +172,7 @@ export interface NightRecord {
 
   naps?: NapLog[];
   caffeine_events?: CaffeineEventLog[];
+  life_log_events?: LifeLogEvent[];
   routine_sessions?: DailyRoutineSession[];
   derived_intervals?: DerivedBehavioralIntervals;
 

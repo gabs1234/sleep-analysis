@@ -4,13 +4,13 @@ export const dynamic = "force-static";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Sleep Protocol Runner",
-    short_name: "Sleep Study",
-    description: "A low-friction, configurable personal sleep study and daily routine tracker.",
+    name: "Sleep Journal",
+    short_name: "Sleep Log",
+    description: "A personal timeline for sleep, wellbeing, and structured self-experiments.",
     start_url: "/",
     display: "standalone",
-    background_color: "#000000",
-    theme_color: "#000000",
+    background_color: "#f5f3ee",
+    theme_color: "#f5f3ee",
     orientation: "portrait-primary",
     icons: [
       {

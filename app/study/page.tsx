@@ -81,13 +81,13 @@ export default function StudyPage() {
     : "Not started";
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-8 space-y-8 animate-fade-in pb-20">
+    <div className="legacy-page mx-auto w-full max-w-xl animate-fade-in space-y-8 px-5 pb-28 pt-7">
       {/* Header */}
       <div className="space-y-1">
-        <div className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
+        <div className="app-eyebrow">
           PROTOCOL STATUS
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
+        <h1 className="text-[1.8rem] font-semibold tracking-[-0.04em] text-[#20201e]">
           {config.study_name}
         </h1>
       </div>

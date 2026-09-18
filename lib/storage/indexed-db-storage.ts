@@ -1,6 +1,6 @@
 import { ExperimentConfig } from "@/types/experiment";
 import { PersistenceStatus, SyncMutation } from "@/types/persistence";
-import { UserPreferences } from "@/types/preferences";
+import { DEFAULT_USER_PREFERENCES, UserPreferences } from "../../types/preferences";
 import { StudyState } from "@/types/study";
 import { WearableProviderConfig } from "@/types/wearable";
 import { buildDocumentMutation, buildStudyStateMutations, createMutationId } from "./sync-mutations";
@@ -183,7 +183,14 @@ export async function initializeBrowserStorage(
       config: storedConfig?.value || fallback.config,
       state: storedState?.value || fallback.state,
       wearableConfig: storedWearable?.value || fallback.wearableConfig,
-      preferences: storedPreferences?.value || fallback.preferences,
+      preferences: {
+        ...DEFAULT_USER_PREFERENCES,
+        ...(storedPreferences?.value || fallback.preferences),
+        routine: {
+          ...DEFAULT_USER_PREFERENCES.routine,
+          ...(storedPreferences?.value?.routine || fallback.preferences.routine),
+        },
+      },
     };
 
     if (!hasIndexedData) {

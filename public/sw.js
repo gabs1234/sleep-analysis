@@ -1,5 +1,5 @@
-const CACHE_NAME = "sleep-protocol-shell-v3";
-const APP_SHELL = ["/", "/study/", "/data/", "/settings/", "/manifest.webmanifest", "/app-icon.svg"];
+const CACHE_NAME = "sleep-journal-shell-v5";
+const APP_SHELL = ["/", "/log/", "/strategy/", "/study/", "/data/", "/settings/", "/manifest.webmanifest", "/app-icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));

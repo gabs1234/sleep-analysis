@@ -14,17 +14,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sleep Protocol Runner",
-  description: "Frictionless N-of-1 sleep study runner and data collection tool",
+  title: "Sleep Journal",
+  description: "A personal timeline for sleep, wellbeing, and structured self-experiments",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Sleep Study",
+    title: "Sleep Journal",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: "#f5f3ee",
   width: "device-width",
   initialScale: 1,
 };
@@ -37,9 +37,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full dark antialiased bg-black`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased bg-[#f5f3ee]`}
     >
-      <body className="min-h-full flex flex-col bg-black text-zinc-100 selection:bg-zinc-800">
+      <body className="flex min-h-full flex-col bg-[#f5f3ee] text-[#252421] selection:bg-[#dcd3ff]">
         <Providers>{children}</Providers>
       </body>
     </html>

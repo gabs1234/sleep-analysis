@@ -22,7 +22,7 @@ export interface TimelineItem {
   detail?: string;
   recordDate: string;
   removable?: {
-    collection: "life_log_events" | "bowel_movements" | "bloating_events";
+    collection: "life_log_events" | "bowel_movements" | "bloating_events" | "evening_actions";
     id: string;
   };
 }
@@ -30,6 +30,77 @@ export interface TimelineItem {
 const readinessLabels = ["Wrecked", "Sluggish", "Ready", "Sharp"];
 const qualityLabels = ["Bad sleep", "Poor sleep", "Good sleep", "Excellent sleep"];
 const stressLabels = ["Relaxed", "Mild stress", "Stressed", "Very stressed"];
+const wakeReasonLabels: Record<string, string> = {
+  natural: "natural awakening",
+  spontaneous: "spontaneous awakening",
+  alarm: "alarm",
+  light: "light",
+  noise: "noise",
+  other: "other",
+  unsure: "unsure",
+};
+const adherenceLabels = { yes: "yes", mostly: "mostly", no: "no" } as const;
+const workStressLabels = ["Calm at work", "Mild work stress", "Work was stressful", "Work was overwhelming"];
+const workSatisfactionLabels = ["Work felt bad", "Work felt frustrating", "Work felt fine", "Work felt satisfying"];
+const socialLabels = ["No meaningful contact", "Brief meaningful contact", "Some meaningful contact", "Substantial meaningful contact"];
+const routineLabels = ["Routine fell apart", "Routine partly followed", "Routine mostly followed", "Routine completed"];
+const eatingLabels = ["Eating felt normal", "Eating somewhat off", "Eating felt out of control"];
+const mentalArousalLabels = ["Mind quiet", "Mind active", "Mind racing", "Could not switch off"];
+const sleepinessLabels = ["Not sleepy", "Slightly sleepy", "Sleepy", "Struggling to stay awake"];
+
+function readableValue(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+function morningSummaryDetail(record: NightRecord): string {
+  const assessment = record.morning_assessment;
+  if (!assessment) return "Morning check-in logged";
+
+  const parts = [
+    readinessLabels[assessment.readiness] || "Readiness logged",
+    qualityLabels[assessment.sleep_quality] || "Sleep rated",
+    `Woke by ${wakeReasonLabels[assessment.wake_reason] || readableValue(assessment.wake_reason)}`,
+  ];
+  if (assessment.protocol_adherence) {
+    parts.push(`Protocol ${adherenceLabels[assessment.protocol_adherence]}`);
+  }
+  if (assessment.evening_plan_adherence) {
+    parts.push(`Plan ${adherenceLabels[assessment.evening_plan_adherence]}`);
+  }
+  parts.push(
+    assessment.unusual_night
+      ? `Unusual: ${(assessment.unusual_reasons || []).map(readableValue).join(", ") || "yes"}`
+      : "No unusual factors"
+  );
+  if (assessment.adherence_note) parts.push(assessment.adherence_note);
+  if (assessment.evening_plan_adherence_note) parts.push(assessment.evening_plan_adherence_note);
+  if (assessment.unusual_note) parts.push(assessment.unusual_note);
+  return parts.join(" · ");
+}
+
+function eveningSummaryDetail(record: NightRecord): string {
+  const context = record.daily_context;
+  const preSleep = record.pre_sleep_state;
+  const parts: string[] = [];
+
+  if (context?.day_type) parts.push(readableValue(context.day_type));
+  if (context?.did_work !== undefined) parts.push(context.did_work ? "Worked" : "Did not work");
+  if (context?.overall_stress !== undefined) parts.push(stressLabels[context.overall_stress]);
+  if (context?.work_stress !== undefined) parts.push(workStressLabels[context.work_stress]);
+  if (context?.work_satisfaction !== undefined && context.work_satisfaction >= 0) {
+    parts.push(workSatisfactionLabels[context.work_satisfaction]);
+  }
+  if (context?.meaningful_social_contact !== undefined) parts.push(socialLabels[context.meaningful_social_contact]);
+  if (context?.routine_adherence !== undefined) parts.push(routineLabels[context.routine_adherence]);
+  if (context?.eating_out_of_control !== undefined) parts.push(eatingLabels[context.eating_out_of_control]);
+  if (preSleep?.mental_arousal !== undefined) parts.push(mentalArousalLabels[preSleep.mental_arousal]);
+  if (preSleep?.sleepiness !== undefined) parts.push(sleepinessLabels[preSleep.sleepiness]);
+  if (record.food_log_completeness) parts.push(`Food log ${record.food_log_completeness}`);
+  if (record.evening_plan?.length) parts.push(`${record.evening_plan.length} planned times`);
+  if (context?.notes) parts.push(context.notes);
+
+  return parts.filter(Boolean).join(" · ") || "Evening check-in logged";
+}
 
 function newestTimestamp(...values: Array<string | undefined>): string | undefined {
   return values.filter(Boolean).sort().at(-1);
@@ -93,6 +164,7 @@ export function buildTimeline(records: NightRecord[]): TimelineItem[] {
         title: action.action_label,
         detail: "Protocol event",
         recordDate: record.date,
+        removable: { collection: "evening_actions", id: action.action_id },
       });
     }
 
@@ -137,7 +209,7 @@ export function buildTimeline(records: NightRecord[]): TimelineItem[] {
         timestamp: assessment.completed_at,
         kind: "morning",
         title: "Morning summary",
-        detail: `${readinessLabels[assessment.readiness] || "Readiness logged"} · ${qualityLabels[assessment.sleep_quality] || "Sleep rated"}`,
+        detail: morningSummaryDetail(record),
         recordDate: record.date,
       });
     }
@@ -145,22 +217,16 @@ export function buildTimeline(records: NightRecord[]): TimelineItem[] {
     const eveningTimestamp = newestTimestamp(
       record.pre_sleep_state?.completed_at,
       record.daily_context?.completed_at,
-      record.evening_plan_completed_at
+      record.evening_plan_completed_at,
+      record.nutrition_fallback?.completed_at
     );
-    if (eveningTimestamp && (record.daily_context || record.pre_sleep_state)) {
-      const parts: string[] = [];
-      if (record.daily_context?.overall_stress !== undefined) {
-        parts.push(stressLabels[record.daily_context.overall_stress]);
-      }
-      if (record.pre_sleep_state?.sleepiness !== undefined) {
-        parts.push(["Not sleepy", "A little sleepy", "Sleepy", "Very sleepy"][record.pre_sleep_state.sleepiness]);
-      }
+    if (eveningTimestamp && (record.daily_context || record.pre_sleep_state || record.food_log_completeness || record.evening_plan_completed_at)) {
       items.push({
         id: `evening-${record.date}`,
         timestamp: eveningTimestamp,
         kind: "evening",
         title: "Evening summary",
-        detail: parts.join(" · ") || "Day and pre-sleep state logged",
+        detail: eveningSummaryDetail(record),
         recordDate: record.date,
       });
     }

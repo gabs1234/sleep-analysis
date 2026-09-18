@@ -94,7 +94,7 @@ interface StudyContextType {
   updateNightRecord: (date: string, updates: Partial<NightRecord>) => void;
   deleteNightRecord: (date: string) => void;
   syncWearableForDate: (date: string) => Promise<boolean>;
-  logEveningAction: (actionId: string, actionLabel: string, customTimestamp?: string) => void;
+  logEveningAction: (actionId: string, actionLabel: string, customTimestamp?: string, targetDate?: string) => void;
   removeEveningAction: (actionId: string) => void;
   logBloatingEvent: (event: BloatingEvent) => void;
   logBowelMovement: (event: BowelMovementEvent) => void;
@@ -1079,6 +1079,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           derived_nutrition: derivedNutrition,
           naps: existingRec?.naps || [],
           caffeine_events: existingRec?.caffeine_events || [],
+          life_log_events: existingRec?.life_log_events || [],
           routine_sessions: existingRec?.routine_sessions || [],
           morning_assessment: assessment,
           wearable_data: sleep || existingRec?.wearable_data,
@@ -1115,8 +1116,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   // Action: Log evening event timestamp
   const logEveningAction = useCallback(
-    (actionId: string, actionLabel: string, customTimestamp?: string) => {
-      const todayKey = getActiveNightDateKey();
+    (actionId: string, actionLabel: string, customTimestamp?: string, targetDate?: string) => {
+      const todayKey = targetDate || getActiveNightDateKey();
       const now = customTimestamp || new Date().toISOString();
 
       setState((prevState) => {

@@ -8,8 +8,11 @@ import { useStudySession } from "@/context/study-context";
 import { createClientId } from "@/lib/client-id";
 import { formatDateKey, formatLocalTime } from "@/lib/engine/protocol-engine";
 import { getActiveNightDateKey } from "@/lib/engine/time-context";
+import { getPhaseTrackingActionIds } from "@/lib/config/study-config";
 import { buildTimeline, TimelineItem, timelineItemsForDate, TimelineKind } from "@/lib/timeline/timeline-events";
+import { consumeLogComposerRequest, OPEN_LOG_COMPOSER_EVENT } from "@/lib/timeline/log-composer-request";
 import { BloatingSeverity, BowelMovementEvent, BristolStoolType } from "@/types/gi";
+import { EveningActionDefinition } from "@/types/experiment";
 import { LifeLogEvent, LifeLogEventKind } from "@/types/study";
 
 type ComposerKind = LifeLogEventKind | "bowel" | "bloating";
@@ -36,6 +39,14 @@ const KIND_STYLE: Record<TimelineKind, { icon: AppIconName; className: string }>
   protocol: { icon: "spark", className: "bg-[var(--log-green-bg)] text-[var(--log-green-fg)]" },
   caffeine: { icon: "coffee", className: "bg-[var(--log-orange-bg)] text-[var(--log-orange-fg)]" },
   routine: { icon: "activity", className: "bg-[var(--log-green-bg)] text-[var(--log-green-fg)]" },
+};
+
+const TRACKING_ACTION_PRESENTATION: Record<string, { label: string; icon: AppIconName; color: string }> = {
+  meal_end: { label: "Finished last meal", icon: "coffee", color: "bg-[var(--log-orange-bg)] text-[var(--log-orange-fg)]" },
+  screen_end: { label: "Screens done", icon: "x", color: "bg-[var(--log-blue-bg)] text-[var(--log-blue-fg)]" },
+  winddown_start: { label: "Start pre-sleep routine", icon: "book", color: "bg-[var(--log-purple-bg)] text-[var(--log-purple-fg)]" },
+  in_bed_ready: { label: "In bed", icon: "moon", color: "bg-[var(--log-indigo-bg)] text-[var(--log-indigo-fg)]" },
+  lights_out: { label: "Lights out", icon: "spark", color: "bg-[var(--log-green-bg)] text-[var(--log-green-fg)]" },
 };
 
 function shiftDate(dateKey: string, amount: number): string {
@@ -83,7 +94,7 @@ function friendlyDate(dateKey: string): string {
 }
 
 export default function LogPage() {
-  const { isReady, state, updateNightRecord, viewContext } = useStudySession();
+  const { isReady, state, activePhase, updateNightRecord, logEveningAction, viewContext } = useStudySession();
   const today = formatDateKey();
   const [selectedDate, setSelectedDate] = useState(today);
   const [composer, setComposer] = useState<{ kind: ComposerKind; time: string } | null>(null);
@@ -98,6 +109,13 @@ export default function LogPage() {
   const weekDates = useMemo(() => weekFor(selectedDate), [selectedDate]);
   const morningRecord = viewContext.targetNightRecord || undefined;
   const tonightRecord = state.records.find((record) => record.date === getActiveNightDateKey());
+  const trackingActions = useMemo(() => {
+    const configuredActions = activePhase.evening_actions || [];
+    const relevantIds = getPhaseTrackingActionIds(activePhase.id);
+    return relevantIds
+      ? configuredActions.filter((action) => relevantIds.includes(action.id))
+      : configuredActions;
+  }, [activePhase]);
   const itemsByHour = useMemo(() => {
     const grouped = new Map<number, TimelineItem[]>();
     for (const item of visibleItems) {
@@ -108,22 +126,46 @@ export default function LogPage() {
   }, [visibleItems]);
   const displayedHours = useMemo(() => {
     if (showAllHours) return Array.from({ length: 24 }, (_, index) => index);
-    const anchors = [...itemsByHour.keys()];
-    if (selectedDate === today) anchors.push(new Date().getHours());
-    if (!anchors.length) return [12];
-    const first = Math.min(...anchors);
-    const last = Math.max(...anchors);
-    return Array.from({ length: last - first + 1 }, (_, index) => first + index);
+    const occupiedHours = new Set(itemsByHour.keys());
+    if (selectedDate === today) occupiedHours.add(new Date().getHours());
+    if (!occupiedHours.size) return [12];
+    return [...occupiedHours].sort((a, b) => a - b);
   }, [itemsByHour, selectedDate, showAllHours, today]);
 
   useEffect(() => {
-    const openComposer = () => setPickerTime(currentTime());
-    window.addEventListener("open-log-composer", openComposer);
-    if (window.location.hash === "#add") {
-      openComposer();
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-    return () => window.removeEventListener("open-log-composer", openComposer);
+    const showKindPicker = () => {
+      setActiveFlow(null);
+      setComposer(null);
+      setPickerTime(currentTime());
+    };
+    const openComposer = () => {
+      consumeLogComposerRequest();
+      showKindPicker();
+    };
+    const consumePendingRequest = () => {
+      const requestedByHash = window.location.hash === "#add";
+      const requestedBeforeNavigation = consumeLogComposerRequest();
+      if (!requestedByHash && !requestedBeforeNavigation) return;
+      showKindPicker();
+      if (requestedByHash) {
+        const cleanUrl = `${window.location.pathname}${window.location.search}`;
+        window.history.replaceState(window.history.state, "", cleanUrl);
+      }
+    };
+
+    window.addEventListener(OPEN_LOG_COMPOSER_EVENT, openComposer);
+    window.addEventListener("hashchange", consumePendingRequest);
+    window.addEventListener("pageshow", consumePendingRequest);
+    const frame = window.requestAnimationFrame(consumePendingRequest);
+    const fallback = window.setTimeout(consumePendingRequest, 50);
+
+    return () => {
+      window.removeEventListener(OPEN_LOG_COMPOSER_EVENT, openComposer);
+      window.removeEventListener("hashchange", consumePendingRequest);
+      window.removeEventListener("pageshow", consumePendingRequest);
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(fallback);
+    };
   }, []);
 
   const saveLifeEvent = (event: LifeLogEvent) => {
@@ -150,7 +192,19 @@ export default function LogPage() {
     const { collection, id } = item.removable;
     if (collection === "life_log_events") updateNightRecord(item.recordDate, { life_log_events: (record.life_log_events || []).filter((entry) => entry.id !== id) });
     else if (collection === "bowel_movements") updateNightRecord(item.recordDate, { bowel_movements: (record.bowel_movements || []).filter((entry) => entry.id !== id) });
-    else updateNightRecord(item.recordDate, { bloating_events: (record.bloating_events || []).filter((entry) => entry.id !== id) });
+    else if (collection === "bloating_events") updateNightRecord(item.recordDate, { bloating_events: (record.bloating_events || []).filter((entry) => entry.id !== id) });
+    else updateNightRecord(item.recordDate, { evening_actions: record.evening_actions.filter((entry) => entry.action_id !== id) });
+  };
+
+  const logTrackingAction = (action: EveningActionDefinition, time: string) => {
+    const presentation = TRACKING_ACTION_PRESENTATION[action.id];
+    logEveningAction(
+      action.id,
+      presentation?.label || action.label,
+      localTimestamp(selectedDate, time),
+      selectedDate
+    );
+    setPickerTime(null);
   };
 
   if (!isReady) return <div className="flex min-h-[60vh] items-center justify-center bg-[var(--log-bg)]"><div className="h-7 w-7 animate-spin rounded-full border-2 border-[var(--log-line)] border-t-[var(--log-accent)]" /></div>;
@@ -166,7 +220,7 @@ export default function LogPage() {
       <div className="mx-auto w-full max-w-xl">
         <header className="bg-[var(--log-header)] px-3 pb-4 pt-5">
           <div className="grid grid-cols-[2.5rem_1fr_2.5rem] items-center">
-            <button type="button" onClick={() => setShowAllHours((value) => !value)} className={`flex h-9 w-9 items-center justify-center rounded-lg ${showAllHours ? "text-[var(--log-text)]" : "bg-[var(--log-surface-muted)] text-[var(--log-accent)]"}`} aria-label={showAllHours ? "Hide empty hours" : "Show all hours"}><AppIcon name="log" size={21} /></button>
+            <button type="button" onClick={() => setShowAllHours((value) => !value)} className={`flex h-9 w-9 items-center justify-center rounded-lg ${showAllHours ? "text-[var(--log-text)]" : "bg-[var(--log-surface-muted)] text-[var(--log-accent)]"}`} aria-label={showAllHours ? "Show compact timeline" : "Show every hour"} aria-pressed={!showAllHours}><AppIcon name="log" size={21} /></button>
             <div className="flex items-center justify-center gap-4">
               <button type="button" onClick={() => setSelectedDate(shiftDate(selectedDate, -1))} className="p-1 text-[var(--log-text)]" aria-label="Previous day"><AppIcon name="chevron-left" size={22} strokeWidth={2.5} /></button>
               <button type="button" onClick={() => setSelectedDate(today)} className="min-w-20 text-center text-[17px] font-bold tracking-[-0.02em]">{friendlyDate(selectedDate)}</button>
@@ -216,7 +270,7 @@ export default function LogPage() {
                         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.className}`}><AppIcon name={style.icon} size={18} /></span>
                         <div className="min-w-0 flex-1">
                           <h2 className="truncate text-[13px] font-semibold text-[var(--log-text)]">{item.title}</h2>
-                          {item.detail && <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--log-muted)]">{item.detail}</p>}
+                          {item.detail && <p className={`mt-1 text-[11px] leading-relaxed text-[var(--log-muted)] ${item.kind === "morning" || item.kind === "evening" ? "" : "line-clamp-2"}`}>{item.detail}</p>}
                         </div>
                         {item.removable && <button type="button" onClick={() => removeItem(item)} className="rounded-md p-1.5 text-[var(--log-faint)] opacity-0 transition-opacity hover:text-[#d95672] group-hover:opacity-100 focus:opacity-100" aria-label={`Delete ${item.title}`}><AppIcon name="trash" size={15} /></button>}
                       </div>
@@ -229,18 +283,30 @@ export default function LogPage() {
         </section>
       </div>
 
-      {pickerTime && <KindPicker time={pickerTime} showSummaries={selectedDate === today} onClose={() => setPickerTime(null)} onSelect={(kind) => { setComposer({ kind, time: pickerTime }); setPickerTime(null); }} onMorning={() => { setPickerTime(null); setActiveFlow("morning"); }} onEvening={() => { setPickerTime(null); setActiveFlow("evening"); }} />}
+      {pickerTime && <KindPicker time={pickerTime} studyName={activePhase.name} trackingActions={trackingActions} showSummaries={selectedDate === today} onClose={() => setPickerTime(null)} onTrack={(action) => logTrackingAction(action, pickerTime)} onSelect={(kind) => { setComposer({ kind, time: pickerTime }); setPickerTime(null); }} onMorning={() => { setPickerTime(null); setActiveFlow("morning"); }} onEvening={() => { setPickerTime(null); setActiveFlow("evening"); }} />}
 
       {composer && <LogComposer kind={composer.kind} initialTime={composer.time} dateKey={selectedDate} onClose={() => setComposer(null)} onSaveLife={(entry) => { saveLifeEvent(entry); setComposer(null); }} onSaveBowel={(entry) => { saveBowelMovement(entry); setComposer(null); }} onSaveBloating={(severity, timestamp, note) => { saveBloating(severity, timestamp, note); setComposer(null); }} />}
     </main>
   );
 }
 
-function KindPicker({ time, showSummaries, onClose, onSelect, onMorning, onEvening }: { time: string; showSummaries: boolean; onClose: () => void; onSelect: (kind: ComposerKind) => void; onMorning: () => void; onEvening: () => void }) {
+function KindPicker({ time, studyName, trackingActions, showSummaries, onClose, onTrack, onSelect, onMorning, onEvening }: { time: string; studyName: string; trackingActions: EveningActionDefinition[]; showSummaries: boolean; onClose: () => void; onTrack: (action: EveningActionDefinition) => void; onSelect: (kind: ComposerKind) => void; onMorning: () => void; onEvening: () => void }) {
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 px-3 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="mb-2 w-full max-w-xl animate-sheet-up rounded-[1.7rem] bg-[var(--log-surface)] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-[var(--log-text)] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+      <section className="mb-2 max-h-[92vh] w-full max-w-xl animate-sheet-up overflow-y-auto rounded-[1.7rem] bg-[var(--log-surface)] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-[var(--log-text)] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
         <div className="mb-5 flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--log-faint)]">Add at {time}</p><h2 className="mt-1 text-xl font-semibold">What are you logging?</h2></div><button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--log-surface-muted)] text-[var(--log-muted)]" aria-label="Close"><AppIcon name="x" size={17} /></button></div>
+        {trackingActions.length > 0 && (
+          <div className="mb-4">
+            <div className="mb-2.5 flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--log-faint)]">Study timestamps</span><span className="max-w-[12rem] truncate text-[10px] text-[var(--log-muted)]">{studyName}</span></div>
+            <div className="grid grid-cols-2 gap-2">
+              {trackingActions.map((action) => {
+                const presentation = TRACKING_ACTION_PRESENTATION[action.id] || { label: action.label, icon: "clock" as AppIconName, color: "bg-[var(--log-blue-bg)] text-[var(--log-blue-fg)]" };
+                return <button key={action.id} type="button" onClick={() => onTrack(action)} className="flex min-h-14 items-center gap-2.5 rounded-xl bg-[var(--log-surface-muted)] px-3 py-2.5 text-left"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${presentation.color}`}><AppIcon name={presentation.icon} size={16} /></span><span className="text-[11px] font-semibold leading-tight text-[var(--log-text)]">{presentation.label}</span></button>;
+              })}
+            </div>
+          </div>
+        )}
+        <div className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--log-faint)]">Other entries</div>
         <div className="grid grid-cols-3 gap-3">{QUICK_ACTIONS.map((action) => <button key={action.kind} type="button" onClick={() => onSelect(action.kind)} className="flex flex-col items-center gap-2.5 rounded-2xl bg-[var(--log-surface-muted)] px-2 py-4 text-center"><span className={`flex h-11 w-11 items-center justify-center rounded-xl ${action.color}`}><AppIcon name={action.icon} size={19} /></span><span className="text-[11px] font-semibold text-[var(--log-text)]">{action.label}</span></button>)}</div>
         {showSummaries && <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--log-line)] pt-4"><button type="button" onClick={onMorning} className="flex items-center gap-2 rounded-xl bg-[var(--log-yellow-bg)] px-3 py-3 text-left text-xs font-semibold text-[var(--log-yellow-fg)]"><AppIcon name="sun" size={17} /> Morning summary</button><button type="button" onClick={onEvening} className="flex items-center gap-2 rounded-xl bg-[var(--log-purple-bg)] px-3 py-3 text-left text-xs font-semibold text-[var(--log-purple-fg)]"><AppIcon name="book" size={17} /> Evening summary</button></div>}
       </section>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { AppIcon, AppIconName } from "@/components/common/app-icon";
 import { useStudySession } from "@/context/study-context";
 import {
   AVAILABLE_STUDIES,
@@ -17,6 +18,57 @@ function formatStorageSize(bytes?: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+type SettingsSection =
+  | "appearance"
+  | "connections"
+  | "study"
+  | "storage"
+  | "developer";
+
+const SETTINGS_SECTIONS: Array<{
+  id: SettingsSection;
+  title: string;
+  description: string;
+  icon: AppIconName;
+  iconClassName: string;
+}> = [
+  {
+    id: "appearance",
+    title: "Appearance & routine",
+    description: "Theme, workdays and your personal daily routine",
+    icon: "sun",
+    iconClassName: "bg-[var(--log-yellow-bg)] text-[var(--log-yellow-fg)]",
+  },
+  {
+    id: "connections",
+    title: "Data connections",
+    description: "Wearables, Google Fit and imported health streams",
+    icon: "activity",
+    iconClassName: "bg-[var(--log-blue-bg)] text-[var(--log-blue-fg)]",
+  },
+  {
+    id: "study",
+    title: "Study protocol",
+    description: "Choose or import the protocol that guides your tracking",
+    icon: "spark",
+    iconClassName: "bg-[var(--log-purple-bg)] text-[var(--log-purple-fg)]",
+  },
+  {
+    id: "storage",
+    title: "Storage & backup",
+    description: "Local data, hub sync and device migration",
+    icon: "log",
+    iconClassName: "bg-[var(--log-green-bg)] text-[var(--log-green-fg)]",
+  },
+  {
+    id: "developer",
+    title: "Developer tools",
+    description: "Simulation tools and study reset controls",
+    icon: "settings",
+    iconClassName: "bg-[var(--log-orange-bg)] text-[var(--log-orange-fg)]",
+  },
+];
 
 export default function SettingsPage() {
   const {
@@ -53,6 +105,7 @@ export default function SettingsPage() {
   const [diagnosticResult, setDiagnosticResult] = useState<GoogleHealthDiagnosticResult | null>(null);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
   const [hubSyncNotice, setHubSyncNotice] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<SettingsSection | null>(null);
 
   const isGoogleConnected = Boolean(
     wearableConfig.provider_type === "google_health" && wearableConfig.access_token
@@ -285,18 +338,33 @@ export default function SettingsPage() {
 
   const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
   const currentRedirectUri = typeof window !== "undefined" ? window.location.origin + "/settings" : "";
+  const activeSectionDetails = SETTINGS_SECTIONS.find((section) => section.id === activeSection);
 
   return (
-    <div className="legacy-page mx-auto w-full max-w-xl animate-fade-in space-y-8 px-5 pb-28 pt-7">
-      {/* Header */}
-      <div className="space-y-1">
-        <div className="app-eyebrow">
-          CONFIGURATION
+    <div className="legacy-page mx-auto min-h-screen w-full max-w-xl animate-fade-in space-y-6 px-5 pb-32 pt-7">
+      <header className="flex min-h-14 items-start gap-3">
+        {activeSection && (
+          <button
+            type="button"
+            onClick={() => setActiveSection(null)}
+            className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--log-surface)] text-[var(--log-text)] shadow-[var(--log-shadow)] transition-transform active:scale-95"
+            aria-label="Back to all settings"
+          >
+            <AppIcon name="chevron-left" size={20} />
+          </button>
+        )}
+        <div className="space-y-1">
+          <div className="app-eyebrow">{activeSection ? "SETTINGS" : "CONFIGURATION"}</div>
+          <h1 className="text-[1.8rem] font-semibold tracking-[-0.04em] text-[#20201e]">
+            {activeSectionDetails?.title ?? "Settings"}
+          </h1>
+          {activeSectionDetails && (
+            <p className="max-w-md text-sm leading-relaxed text-[var(--app-text-secondary)]">
+              {activeSectionDetails.description}
+            </p>
+          )}
         </div>
-        <h1 className="text-[1.8rem] font-semibold tracking-[-0.04em] text-[#20201e]">
-          Settings
-        </h1>
-      </div>
+      </header>
 
       {saveNotice && (
         <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-mono text-emerald-400 text-center animate-fade-in">
@@ -304,7 +372,52 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {activeSection === null && (
+        <div className="space-y-3">
+          <div className="rounded-3xl bg-[var(--log-surface)] p-5 shadow-[var(--log-shadow)]">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--log-faint)]">
+                  Active study
+                </p>
+                <p className="mt-1 text-base font-semibold text-[var(--log-text)]">
+                  {config.study_name}
+                </p>
+              </div>
+              <span className="rounded-full bg-[var(--log-purple-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--log-purple-fg)]">
+                {preferences.theme === "system" ? "System theme" : `${preferences.theme === "dark" ? "Night" : "Day"} theme`}
+              </span>
+            </div>
+          </div>
+
+          <nav aria-label="Settings sections" className="space-y-2">
+            {SETTINGS_SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => setActiveSection(section.id)}
+                className="flex w-full items-center gap-4 rounded-2xl bg-[var(--log-surface)] p-4 text-left shadow-[var(--log-shadow)] transition-transform active:scale-[0.985]"
+              >
+                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${section.iconClassName}`}>
+                  <AppIcon name={section.icon} size={21} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-[var(--log-text)]">
+                    {section.title}
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-[var(--log-muted)]">
+                    {section.description}
+                  </span>
+                </span>
+                <AppIcon name="chevron-right" size={18} className="shrink-0 text-[var(--log-faint)]" />
+              </button>
+            ))}
+          </nav>
+        </div>
+      )}
+
       {/* Personal defaults: intentionally stored separately from shareable study protocols. */}
+      {activeSection === "appearance" && (
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-5">
         <div>
           <h2 className="text-sm font-semibold text-zinc-100">Personal defaults</h2>
@@ -369,7 +482,9 @@ export default function SettingsPage() {
           <p className="text-[11px] text-zinc-500">Default: four 15-minute sessions. Only this generic label and completion times are stored.</p>
         </div>
       </div>
+      )}
 
+      {activeSection === "storage" && (
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -434,8 +549,10 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+      )}
 
       {/* 1. Wearable & Health Connect Data Sync */}
+      {activeSection === "connections" && (
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-zinc-100">
@@ -721,8 +838,10 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* 2. Study Protocol Selection */}
+      {activeSection === "study" && (
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-zinc-100">
@@ -808,8 +927,10 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* 3. Data Backup & Cross-Device Restore */}
+      {activeSection === "storage" && (
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-zinc-100">
@@ -836,8 +957,10 @@ export default function SettingsPage() {
           </label>
         </div>
       </div>
+      )}
 
       {/* 4. Developer & Testing Simulation Tools */}
+      {activeSection === "developer" && (
       <div className="p-5 rounded-2xl border border-zinc-900 bg-zinc-950 space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-zinc-100">
@@ -865,8 +988,10 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+      )}
 
       {/* 5. Danger Zone: Reset */}
+      {activeSection === "developer" && (
       <div className="p-5 rounded-2xl border border-rose-950/40 bg-zinc-950 space-y-3">
         <h2 className="text-sm font-semibold text-rose-400">
           Reset Study State
@@ -902,6 +1027,7 @@ export default function SettingsPage() {
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

@@ -74,8 +74,24 @@ const PHASE_EVENING_QUESTIONNAIRES: Record<string, EveningQuestionnaireModule[]>
   final_protocol_validation: ["day_context", "stress", "work", "routine", "pre_sleep"],
 };
 
+const PHASE_TRACKING_ACTION_IDS: Record<string, string[]> = {
+  baseline: ["meal_end", "screen_end", "winddown_start", "in_bed_ready", "lights_out"],
+  darkness: ["in_bed_ready", "lights_out"],
+  noise: ["in_bed_ready", "lights_out"],
+  screen_cutoff: ["screen_end", "in_bed_ready", "lights_out"],
+  structured_winddown: ["screen_end", "winddown_start", "in_bed_ready", "lights_out"],
+  meal_cutoff: ["meal_end", "in_bed_ready", "lights_out"],
+  sleep_window_timing: ["in_bed_ready", "lights_out"],
+  sleep_opportunity: ["in_bed_ready", "lights_out"],
+  final_protocol_validation: ["meal_end", "screen_end", "winddown_start", "in_bed_ready", "lights_out"],
+};
+
 export function getEveningQuestionnaireModules(phaseId: string): EveningQuestionnaireModule[] {
   return PHASE_EVENING_QUESTIONNAIRES[phaseId] || FULL_EVENING_QUESTIONNAIRE;
+}
+
+export function getPhaseTrackingActionIds(phaseId: string): string[] | undefined {
+  return PHASE_TRACKING_ACTION_IDS[phaseId];
 }
 
 /**
@@ -101,6 +117,10 @@ export function normalizeProtocolV1(raw: RawProtocolV1): ExperimentConfig {
   for (const phaseId of phaseOrder) {
     const rawPhase = phasesDict[phaseId];
     if (!rawPhase) continue;
+    const trackingActionIds = getPhaseTrackingActionIds(phaseId);
+    const phaseEveningActions = trackingActionIds
+      ? defaultEveningActions.filter((action) => trackingActionIds.includes(action.id))
+      : defaultEveningActions;
 
     // Map phase type
     let phaseType: PhaseConfig["type"] = "randomized_experiment";
@@ -118,7 +138,7 @@ export function normalizeProtocolV1(raw: RawProtocolV1): ExperimentConfig {
           instruction: cDef.instruction || cDef.instruction_template || "Follow tonight's condition.",
           secondary_instruction: cDef.secondary_instruction || "Everything else: behave normally.",
           cutoff_minutes_before_bed: cDef.cutoff_minutes_before_target_lights_out,
-          actions: defaultEveningActions,
+          actions: phaseEveningActions,
         };
       }
     }
@@ -142,7 +162,7 @@ export function normalizeProtocolV1(raw: RawProtocolV1): ExperimentConfig {
         "unusual_night",
       ],
       evening_questionnaire_modules: getEveningQuestionnaireModules(phaseId),
-      evening_actions: defaultEveningActions,
+      evening_actions: phaseEveningActions,
       next_phase_prep_instruction: rawPhase.on_complete === "pause_until_next_phase_is_enabled"
         ? "Baseline phase complete. Tomorrow begins the next part of the study."
         : "Phase complete. Tomorrow begins the next part of the study.",

@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AppIcon, AppIconName } from "@/components/common/app-icon";
+import { requestLogComposerOpen } from "@/lib/timeline/log-composer-request";
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -26,9 +27,8 @@ export function BottomNav() {
               <Link
                 href="/log#add"
                 onClick={(event) => {
-                  if (pathname !== "/log") return;
-                  event.preventDefault();
-                  window.dispatchEvent(new Event("open-log-composer"));
+                  requestLogComposerOpen();
+                  if (pathname.startsWith("/log")) event.preventDefault();
                 }}
                 className="-mt-5 flex flex-1 items-center justify-center"
                 aria-label="Add log entry"

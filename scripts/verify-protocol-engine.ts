@@ -6,7 +6,7 @@ import {
   initializeStudyState,
 } from "../lib/engine/protocol-engine";
 import { generateStudyCSV, generateStudyJSON } from "../lib/storage/data-export";
-import { buildFocusedStudyConfig, getEveningQuestionnaireModules } from "../lib/config/study-config";
+import { buildFocusedStudyConfig, getEveningQuestionnaireModules, getPhaseTrackingActionIds } from "../lib/config/study-config";
 import { ExperimentConfig } from "../types/experiment";
 import { NightRecord } from "../types/study";
 
@@ -156,5 +156,15 @@ if (!mealModules.includes("food_log") || !mealModules.includes("eating") || meal
   throw new Error("Meal-cutoff study should use the meal-specific check-in");
 }
 console.log("✓ Evening questionnaires follow the active strategy profile");
+
+const winddownActions = getPhaseTrackingActionIds("structured_winddown") || [];
+const darknessActions = getPhaseTrackingActionIds("darkness") || [];
+if (!winddownActions.includes("winddown_start") || !winddownActions.includes("screen_end")) {
+  throw new Error("Wind-down study should offer its relevant one-tap timestamps");
+}
+if (darknessActions.includes("meal_end") || !darknessActions.includes("lights_out")) {
+  throw new Error("Darkness study should only offer relevant sleep timestamps");
+}
+console.log("✓ One-tap tracking actions follow the active strategy profile");
 
 console.log("✓ ALL PROTOCOL ENGINE VERIFICATION TESTS PASSED!");

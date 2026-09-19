@@ -7,6 +7,7 @@ import {
 } from "../lib/engine/protocol-engine";
 import { generateStudyCSV, generateStudyJSON } from "../lib/storage/data-export";
 import { buildFocusedStudyConfig, getEveningQuestionnaireModules, getPhaseTrackingActionIds } from "../lib/config/study-config";
+import { buildTimeline } from "../lib/timeline/timeline-events";
 import { ExperimentConfig } from "../types/experiment";
 import { NightRecord } from "../types/study";
 
@@ -166,5 +167,37 @@ if (darknessActions.includes("meal_end") || !darknessActions.includes("lights_ou
   throw new Error("Darkness study should only offer relevant sleep timestamps");
 }
 console.log("✓ One-tap tracking actions follow the active strategy profile");
+
+const winddownPlan = buildFocusedStudyConfig("structured_winddown");
+const winddownTimedEvents = winddownPlan?.phases.find((phase) => phase.id === "structured_winddown")?.timed_events || [];
+const timedRecord: NightRecord = {
+  id: "2026-09-19",
+  date: "2026-09-19",
+  phase_id: "baseline",
+  phase_index: 0,
+  night_number_in_phase: 1,
+  prescribed_instruction: "Follow your normal routine.",
+  evening_actions: [],
+  timed_events: [{
+    id: "timed-yoga",
+    tag_id: "custom-yoga",
+    label: "Yoga",
+    timestamp: "2026-09-19T17:00:00.000Z",
+    logged_at: "2026-09-19T17:00:00.000Z",
+    duration_minutes: 45,
+    source: "custom",
+  }],
+  is_valid: false,
+  created_at: "2026-09-19T17:00:00.000Z",
+  updated_at: "2026-09-19T17:00:00.000Z",
+};
+const timedTimelineItem = buildTimeline([timedRecord]).find((item) => item.kind === "timed");
+if (timedTimelineItem?.title !== "Yoga" || timedTimelineItem.detail !== "45 min" || timedTimelineItem.removable?.collection !== "timed_events") {
+  throw new Error("Timed events should retain their activity, duration, and removal target in the timeline");
+}
+if (winddownTimedEvents[0]?.default_minutes !== 30) {
+  throw new Error("Structured wind-down plan should offer its 30-minute timed activity");
+}
+console.log("✓ Timed activity events retain duration and timeline behavior");
 
 console.log("✓ ALL PROTOCOL ENGINE VERIFICATION TESTS PASSED!");

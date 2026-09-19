@@ -102,6 +102,17 @@ export interface DailyRoutineSession {
   source: "timer" | "manual";
 }
 
+export interface TimedEventLog {
+  id: string;
+  tag_id: string;
+  label: string;
+  timestamp: string;
+  logged_at: string;
+  duration_minutes: number;
+  source: "study" | "custom";
+  note?: string;
+}
+
 export interface NapLog {
   id: string;
   start_time: string; // ISO
@@ -173,6 +184,7 @@ export interface NightRecord {
   naps?: NapLog[];
   caffeine_events?: CaffeineEventLog[];
   life_log_events?: LifeLogEvent[];
+  timed_events?: TimedEventLog[];
   routine_sessions?: DailyRoutineSession[];
   derived_intervals?: DerivedBehavioralIntervals;
 

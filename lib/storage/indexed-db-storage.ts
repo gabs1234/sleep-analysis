@@ -190,6 +190,9 @@ export async function initializeBrowserStorage(
           ...DEFAULT_USER_PREFERENCES.routine,
           ...(storedPreferences?.value?.routine || fallback.preferences.routine),
         },
+        timed_event_tags: Array.isArray(storedPreferences?.value?.timed_event_tags)
+          ? storedPreferences.value.timed_event_tags
+          : fallback.preferences.timed_event_tags || [],
       },
     };
 

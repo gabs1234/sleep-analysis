@@ -21,6 +21,13 @@ export interface EveningActionDefinition {
   description?: string;
 }
 
+export interface TimedEventDefinition {
+  id: string;
+  label: string;
+  default_minutes: number;
+  description?: string;
+}
+
 export interface ConditionConfig {
   id: string;
   instruction: string;
@@ -49,6 +56,7 @@ export interface PhaseConfig {
   morning_questions?: MorningQuestionType[];
   evening_questionnaire_modules?: EveningQuestionnaireModule[];
   evening_actions?: EveningActionDefinition[];
+  timed_events?: TimedEventDefinition[];
   next_phase_prep_instruction?: string;
 }
 

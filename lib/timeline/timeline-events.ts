@@ -1,5 +1,5 @@
-import { formatDateKey } from "@/lib/engine/protocol-engine";
-import { NightRecord } from "@/types/study";
+import { formatDateKey } from "../engine/protocol-engine";
+import { NightRecord } from "../../types/study";
 
 export type TimelineKind =
   | "thought"
@@ -12,7 +12,8 @@ export type TimelineKind =
   | "evening"
   | "protocol"
   | "caffeine"
-  | "routine";
+  | "routine"
+  | "timed";
 
 export interface TimelineItem {
   id: string;
@@ -22,7 +23,7 @@ export interface TimelineItem {
   detail?: string;
   recordDate: string;
   removable?: {
-    collection: "life_log_events" | "bowel_movements" | "bloating_events" | "evening_actions";
+    collection: "life_log_events" | "bowel_movements" | "bloating_events" | "evening_actions" | "timed_events";
     id: string;
   };
 }
@@ -128,6 +129,18 @@ export function buildTimeline(records: NightRecord[]): TimelineItem[] {
         detail: details.join(" · ") || undefined,
         recordDate: record.date,
         removable: { collection: "life_log_events", id: entry.id },
+      });
+    }
+
+    for (const event of record.timed_events || []) {
+      items.push({
+        id: `timed-${event.id}`,
+        timestamp: event.timestamp,
+        kind: "timed",
+        title: event.label,
+        detail: `${event.duration_minutes} min${event.note ? ` · ${event.note}` : ""}`,
+        recordDate: record.date,
+        removable: { collection: "timed_events", id: event.id },
       });
     }
 

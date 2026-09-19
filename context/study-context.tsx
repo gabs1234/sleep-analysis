@@ -1080,6 +1080,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           naps: existingRec?.naps || [],
           caffeine_events: existingRec?.caffeine_events || [],
           life_log_events: existingRec?.life_log_events || [],
+          timed_events: existingRec?.timed_events || [],
           routine_sessions: existingRec?.routine_sessions || [],
           morning_assessment: assessment,
           wearable_data: sleep || existingRec?.wearable_data,

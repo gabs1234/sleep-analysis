@@ -102,6 +102,7 @@ function hasDaySpecificData(record: StudyState["records"][number]): boolean {
     record.naps?.length ||
     record.caffeine_events?.length ||
     record.life_log_events?.length ||
+    record.timed_events?.length ||
     record.routine_sessions?.length ||
     record.migration_archive?.simulated_wearable_data ||
     record.migration_archive?.simulated_food_records?.length
@@ -259,6 +260,9 @@ export function loadUserPreferences(): UserPreferences {
         ...DEFAULT_USER_PREFERENCES.routine,
         ...(parsed.routine || {}),
       },
+      timed_event_tags: Array.isArray(parsed.timed_event_tags)
+        ? parsed.timed_event_tags.filter((tag) => tag && typeof tag.id === "string" && typeof tag.label === "string")
+        : [],
     };
   } catch (e) {
     console.error("Failed to load user preferences:", e);

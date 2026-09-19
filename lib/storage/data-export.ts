@@ -127,6 +127,8 @@ export function generateStudyCSV(
     "evening_action_sources",
     "daily_routine_sessions_completed",
     "daily_routine_minutes_completed",
+    "timed_events_summary",
+    "timed_events_total_minutes",
     
     // Night D Wearable Sleep Response
     "wearable_provider",
@@ -177,6 +179,10 @@ export function generateStudyCSV(
       ? record.evening_plan.map((item) => `${item.action_id}@${formatLocalTime(item.planned_timestamp)}`).join(";")
       : "";
     const completedRoutineSessions = (record.routine_sessions || []).filter((session) => session.completed_at);
+    const timedEvents = record.timed_events || [];
+    const timedEventsSummary = timedEvents
+      .map((event) => `${event.label}:${event.duration_minutes}min@${formatLocalTime(event.timestamp)}`)
+      .join(";");
 
     const maxBloat = record.bloating_events && record.bloating_events.length > 0
       ? Math.max(...record.bloating_events.map((b) => b.severity))
@@ -258,6 +264,8 @@ export function generateStudyCSV(
       escapeCsv(actionSources),
       escapeCsv(completedRoutineSessions.length),
       escapeCsv(completedRoutineSessions.reduce((total, session) => total + session.target_minutes, 0)),
+      escapeCsv(timedEventsSummary),
+      escapeCsv(timedEvents.reduce((total, event) => total + event.duration_minutes, 0)),
       
       // Wearable
       escapeCsv(wearable?.provider ?? ""),

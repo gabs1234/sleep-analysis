@@ -1,4 +1,4 @@
-import { ExperimentConfig, PhaseConfig, ConditionConfig, EveningActionDefinition, EveningQuestionnaireModule } from "@/types/experiment";
+import { ExperimentConfig, PhaseConfig, ConditionConfig, EveningActionDefinition, EveningQuestionnaireModule, TimedEventDefinition } from "@/types/experiment";
 import officialStudyV1Json from "../../sleep_study_protocol_v1.json";
 import defaultStudyJson from "../../config/default-study.json";
 import screenCutoffStudyJson from "../../config/screen-cutoff-study.json";
@@ -86,6 +86,17 @@ const PHASE_TRACKING_ACTION_IDS: Record<string, string[]> = {
   final_protocol_validation: ["meal_end", "screen_end", "winddown_start", "in_bed_ready", "lights_out"],
 };
 
+const PHASE_TIMED_EVENTS: Record<string, TimedEventDefinition[]> = {
+  structured_winddown: [
+    {
+      id: "winddown_routine",
+      label: "Structured wind-down",
+      default_minutes: 30,
+      description: "The repeatable low-demand routine defined for this study.",
+    },
+  ],
+};
+
 export function getEveningQuestionnaireModules(phaseId: string): EveningQuestionnaireModule[] {
   return PHASE_EVENING_QUESTIONNAIRES[phaseId] || FULL_EVENING_QUESTIONNAIRE;
 }
@@ -163,6 +174,7 @@ export function normalizeProtocolV1(raw: RawProtocolV1): ExperimentConfig {
       ],
       evening_questionnaire_modules: getEveningQuestionnaireModules(phaseId),
       evening_actions: phaseEveningActions,
+      timed_events: PHASE_TIMED_EVENTS[phaseId] || [],
       next_phase_prep_instruction: rawPhase.on_complete === "pause_until_next_phase_is_enabled"
         ? "Baseline phase complete. Tomorrow begins the next part of the study."
         : "Phase complete. Tomorrow begins the next part of the study.",
